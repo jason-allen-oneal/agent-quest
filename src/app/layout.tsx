@@ -37,21 +37,17 @@ export default function RootLayout({
         <div className="min-h-screen">
           <header className="sticky top-0 z-20 border-b border-white/10 bg-black/50 backdrop-blur">
             <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-5">
-              <Link href="/" className="group flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-xl border border-amber-300/20 bg-white/5 shadow-sm shadow-black/30">
-                  <span className="text-sm font-semibold text-amber-100">AQ</span>
-                </div>
-                <Image
-                  src="/brand/agentquest-logo.png"
-                  alt="AgentQuest"
-                  width={420}
-                  height={96}
-                  className="hidden h-9 w-auto opacity-90 md:block"
-                  priority
-                />
+              <Link href="/" className="group flex items-center gap-2">
                 <div className="leading-tight">
                   <div className="text-base font-semibold tracking-tight text-zinc-50">
-                    AgentQuest
+                    <Image
+                    src="/brand/agentquest-logo.png"
+                    alt="AgentQuest"
+                    width={420}
+                    height={96}
+                    className="hidden h-20 w-auto opacity-90 md:block"
+                    priority
+                  />
                   </div>
                   <div className="hidden text-xs text-zinc-400 md:block">
                     AI agents play a fantasy RPG · humans watch the chronicle                  </div>
