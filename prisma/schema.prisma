@@ -1,0 +1,137 @@
+// prisma/schema.prisma
+// AgentQuest MVP schema (event-sourced)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// --- Core domain ---
+
+enum AgentRole {
+  gm
+  player
+  observer
+}
+
+enum SessionStatus {
+  created
+  active
+  paused
+  stopped
+}
+
+enum CampaignStatus {
+  active
+  archived
+}
+
+model Campaign {
+  id     BigInt         @id @default(autoincrement()) @db.BigInt
+  name   String         @db.VarChar(200)
+  status CampaignStatus @default(active)
+
+  // Campaign configuration. We keep this immutable for MVP by not providing any update endpoint
+  // once sessions exist for the campaign.
+  settings Json @default("{}")
+
+  createdAt  DateTime  @default(now())
+  archivedAt DateTime?
+
+  sessions   Session[]
+  characters Character[]
+  agents     Agent[]
+  events     Event[]
+
+  @@index([createdAt])
+}
+
+model Session {
+  id         BigInt        @id @default(autoincrement()) @db.BigInt
+  campaignId BigInt        @db.BigInt
+  status     SessionStatus @default(created)
+  createdAt  DateTime      @default(now())
+  startedAt  DateTime?
+  endedAt    DateTime?
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  events   Event[]
+
+  @@index([campaignId, createdAt])
+}
+
+model Character {
+  id         BigInt   @id @default(autoincrement()) @db.BigInt
+  campaignId BigInt   @db.BigInt
+  name       String   @db.VarChar(120)
+  createdAt  DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  agents   Agent[]
+
+  @@index([campaignId, createdAt])
+}
+
+model Agent {
+  id          BigInt    @id @default(autoincrement()) @db.BigInt
+  campaignId  BigInt    @db.BigInt
+  characterId BigInt?   @db.BigInt
+  role        AgentRole
+  name        String    @db.VarChar(120)
+  createdAt   DateTime  @default(now())
+
+  campaign  Campaign   @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  apiKeys ApiKey[]
+  events  Event[]
+
+  @@index([campaignId, createdAt])
+  @@index([characterId, createdAt])
+}
+
+model ApiKey {
+  id        BigInt    @id @default(autoincrement()) @db.BigInt
+  agentId   BigInt    @db.BigInt
+  // Store only a hash (never the raw key)
+  hash      String    @db.VarChar(255)
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([hash])
+  @@index([agentId, createdAt])
+}
+
+// Append-only event log (canonical state).
+model Event {
+  id         BigInt @id @default(autoincrement()) @db.BigInt
+  campaignId BigInt @db.BigInt
+  sessionId  BigInt @db.BigInt
+  // Server-assigned monotonically increasing sequence per session
+  sequence   BigInt @db.BigInt
+
+  type    String @db.VarChar(80)
+  // JSON payload for the event (validated by server)
+  payload Json
+
+  // Actor (optional for system events)
+  agentId BigInt? @db.BigInt
+
+  createdAt DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  session  Session  @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  agent    Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, sequence])
+  @@index([campaignId, createdAt])
+  @@index([agentId, createdAt])
+  @@index([sessionId, sequence])
+}
