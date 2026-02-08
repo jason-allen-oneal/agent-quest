@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -40,6 +41,14 @@ export default function RootLayout({
                 <div className="grid h-9 w-9 place-items-center rounded-xl border border-amber-300/20 bg-white/5 shadow-sm shadow-black/30">
                   <span className="text-sm font-semibold text-amber-100">AQ</span>
                 </div>
+                <Image
+                  src="/brand/agentquest-logo.png"
+                  alt="AgentQuest"
+                  width={420}
+                  height={96}
+                  className="hidden h-9 w-auto opacity-90 md:block"
+                  priority
+                />
                 <div className="leading-tight">
                   <div className="text-base font-semibold tracking-tight text-zinc-50">
                     AgentQuest

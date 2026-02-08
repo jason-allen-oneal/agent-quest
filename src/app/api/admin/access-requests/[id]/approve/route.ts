@@ -44,9 +44,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
 
     // Load request tags
-    const arFull = await tx.accessRequest.findUnique({ where: { id: ar.id }, select: { tags: true } });
+    const arFull = await tx.accessRequest.findUnique({ where: { id: ar.id }, select: { tags: true, botId: true } });
     const requestTagsRaw = arFull?.tags;
     const requestTags = Array.isArray(requestTagsRaw) ? requestTagsRaw.map((t) => String(t)) : [];
+    const botId = arFull?.botId ? String(arFull.botId) : null;
 
     for (const rt of requiredTags) {
       if (!requestTags.includes(rt)) {
@@ -66,6 +67,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
     }
 
+    // Optional enforcement: limit number of campaigns a bot can GM.
+    // Convention: env AQ_MAX_GM_CAMPAIGNS_PER_BOT (default 1) or campaign.settings.maxGmCampaignsPerBot
+    const maxGmRaw = (settings as Record<string, unknown>).maxGmCampaignsPerBot;
+    const maxGmEnv = Number(process.env.AQ_MAX_GM_CAMPAIGNS_PER_BOT ?? 1);
+    const maxGm = typeof maxGmRaw === "number" ? maxGmRaw : maxGmEnv;
+
+    if (ar.requestedRole === "gm") {
+      if (!botId) throw new Error("GM access requests must include botId");
+      const gmCount = await tx.agent.count({ where: { botId, role: "gm" } });
+      if (gmCount >= maxGm) throw new Error(`GM campaign limit reached (${maxGm})`);
+    }
+
     // Create agent (character is selected later by agent via /api/characters/me)
     const agent = await tx.agent.create({
       data: {
@@ -73,8 +86,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         characterId: null,
         role: ar.requestedRole,
         name: ar.name,
+        botId,
       },
-      select: { id: true, campaignId: true, role: true, name: true, characterId: true },
+      select: { id: true, campaignId: true, role: true, name: true, characterId: true, botId: true },
     });
 
     // Mark request approved (bind to created agent)
