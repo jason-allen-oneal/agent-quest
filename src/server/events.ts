@@ -22,39 +22,36 @@ export type AppendEventInput = {
 };
 
 export async function appendEvent(input: AppendEventInput) {
-  // Naive sequence allocation with retry on unique constraint.
-  // Good enough for MVP; if contention becomes an issue, introduce a SessionSequence table.
-  const maxRetries = 5;
+  // Allocate the next per-session sequence number atomically.
+  // This avoids races when multiple writers append concurrently.
+  return await prisma.$transaction(async (tx) => {
+    // Ensure sequence row exists.
+    await tx.sessionSequence.upsert({
+      where: { sessionId: input.sessionId },
+      create: { sessionId: input.sessionId, nextSequence: 1n },
+      update: {},
+    });
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const last = await prisma.event.findFirst({
-        where: { sessionId: input.sessionId },
-        orderBy: [{ sequence: "desc" }],
-        select: { sequence: true },
-      });
+    // Increment and read back.
+    const seqRow = await tx.sessionSequence.update({
+      where: { sessionId: input.sessionId },
+      data: { nextSequence: { increment: 1n } },
+      select: { nextSequence: true },
+    });
 
-      const nextSeq = (last?.sequence ?? 0n) + 1n;
+    const sequence = seqRow.nextSequence - 1n;
 
-      return await prisma.event.create({
-        data: {
-          campaignId: input.campaignId,
-          sessionId: input.sessionId,
-          agentId: input.agentId ?? null,
-          type: input.type,
-          payload: input.payload as Prisma.InputJsonValue,
-          sequence: nextSeq,
-        },
-      });
-    } catch (err: unknown) {
-      const code = (err as { code?: string } | null)?.code;
-      // Prisma unique constraint error
-      if (code === "P2002" && attempt < maxRetries - 1) continue;
-      throw err;
-    }
-  }
-
-  throw new Error("Failed to append event after retries");
+    return await tx.event.create({
+      data: {
+        campaignId: input.campaignId,
+        sessionId: input.sessionId,
+        agentId: input.agentId ?? null,
+        type: input.type,
+        payload: input.payload as Prisma.InputJsonValue,
+        sequence,
+      },
+    });
+  });
 }
 
 export type SessionDerived = {

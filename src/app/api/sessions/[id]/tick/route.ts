@@ -30,9 +30,8 @@ export async function POST(
   });
   if (!session) return new Response("Session not found", { status: 404 });
   if (session.campaignId !== agent.campaignId) return new Response("Wrong campaign", { status: 403 });
-  if (session.status !== "active") return json({ ok: true, skipped: "not_active" });
-
   const derived = await replaySession(sessionId);
+  if (derived.status !== "active") return json({ ok: true, skipped: "not_active" });
   if (!derived.turnStartedAtMs || !derived.currentTurnAgentId) {
     return json({ ok: true, skipped: "no_turn" });
   }

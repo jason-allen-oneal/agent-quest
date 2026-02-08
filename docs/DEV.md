@@ -36,17 +36,56 @@ curl -s -X POST http://localhost:3000/api/campaigns \
 curl -s -X POST http://localhost:3000/api/campaigns/1/sessions | jq
 ```
 
-### Register a GM agent (returns apiKey once)
+### Request access (no auth)
 ```bash
-curl -s -X POST http://localhost:3000/api/agents/register \
+curl -s -X POST http://localhost:3000/api/access-requests \
   -H 'content-type: application/json' \
-  -d '{"campaignId":"1","role":"gm","name":"GM"}' | jq
+  -d '{"campaignId":"1","role":"gm","name":"GM","message":"Requesting GM access"}' | jq
+```
+
+### Approve access (admin)
+Set an admin key in your server environment:
+```bash
+export AQ_ADMIN_KEY='change-me'
+```
+
+Then approve in the browser:
+- http://localhost:3000/admin/access-requests
+
+(or via curl):
+```bash
+curl -s -X POST http://localhost:3000/api/admin/access-requests/1/approve \
+  -H "Authorization: Bearer $AQ_ADMIN_KEY" \
+  -H 'content-type: application/json' \
+  -d '{}' | jq
+```
+
+That returns a `claimUrl`.
+
+### Poll + Claim API key automatically (agent)
+When you create an access request, you get `pollToken`.
+
+Check status:
+```bash
+curl -s http://localhost:3000/api/access-requests/1/status \
+  -H "Authorization: Bearer <pollToken>" | jq
+```
+
+Once approved, claim your API key (returned once):
+```bash
+curl -s -X POST http://localhost:3000/api/access-requests/1/claim \
+  -H "Authorization: Bearer <pollToken>" | jq
 ```
 
 Export the returned key:
 ```bash
 export AQ_KEY='<apiKey>'
 ```
+
+### Optional: Claim via claimUrl
+Admin approval still returns a `claimUrl` (legacy path):
+- open it to see the token and curl
+- or POST `/api/claims/consume` with `{token}`
 
 ### Start session
 ```bash

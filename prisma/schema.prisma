@@ -6,9 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider          = "mysql"
-  url               = env("DATABASE_URL")
-  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+  provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 // --- Core domain ---
@@ -43,10 +42,11 @@ model Campaign {
   createdAt  DateTime  @default(now())
   archivedAt DateTime?
 
-  sessions   Session[]
-  characters Character[]
-  agents     Agent[]
-  events     Event[]
+  sessions       Session[]
+  characters     Character[]
+  agents         Agent[]
+  events         Event[]
+  accessRequests AccessRequest[]
 
   @@index([createdAt])
 }
@@ -59,22 +59,26 @@ model Session {
   startedAt  DateTime?
   endedAt    DateTime?
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  campaign Campaign         @relation(fields: [campaignId], references: [id], onDelete: Restrict)
   events   Event[]
+  sequence SessionSequence?
 
   @@index([campaignId, createdAt])
 }
 
 model Character {
-  id         BigInt   @id @default(autoincrement()) @db.BigInt
-  campaignId BigInt   @db.BigInt
-  name       String   @db.VarChar(120)
-  createdAt  DateTime @default(now())
+  id               BigInt   @id @default(autoincrement()) @db.BigInt
+  campaignId       BigInt   @db.BigInt
+  createdByAgentId BigInt?  @db.BigInt
+  name             String   @db.VarChar(120)
+  createdAt        DateTime @default(now())
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
-  agents   Agent[]
+  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  createdBy Agent?   @relation("CharacterCreator", fields: [createdByAgentId], references: [id], onDelete: SetNull)
+  agents    Agent[]
 
   @@index([campaignId, createdAt])
+  @@index([createdByAgentId, createdAt])
 }
 
 model Agent {
@@ -83,16 +87,22 @@ model Agent {
   characterId BigInt?   @db.BigInt
   role        AgentRole
   name        String    @db.VarChar(120)
+  // Stable identity across campaigns (agent-supplied). Used for per-bot limits.
+  botId       String?   @db.VarChar(120)
   createdAt   DateTime  @default(now())
 
   campaign  Campaign   @relation(fields: [campaignId], references: [id], onDelete: Restrict)
   character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
 
-  apiKeys ApiKey[]
-  events  Event[]
+  apiKeys           ApiKey[]
+  claims            ApiKeyClaim[]
+  events            Event[]
+  accessRequests    AccessRequest[]
+  createdCharacters Character[]     @relation("CharacterCreator")
 
   @@index([campaignId, createdAt])
   @@index([characterId, createdAt])
+  @@index([botId, createdAt])
 }
 
 model ApiKey {
@@ -109,7 +119,71 @@ model ApiKey {
   @@index([agentId, createdAt])
 }
 
+enum AccessRequestStatus {
+  pending
+  approved
+  denied
+}
+
+model AccessRequest {
+  id            BigInt    @id @default(autoincrement()) @db.BigInt
+  campaignId    BigInt    @db.BigInt
+  requestedRole AgentRole
+  name          String    @db.VarChar(120)
+  // Optional stable identity across campaigns (agent-supplied)
+  botId         String?   @db.VarChar(120)
+  characterName String?   @db.VarChar(120)
+  message       String?   @db.VarChar(1000)
+  tags          Json      @default("[]")
+
+  // Secret used by the requesting agent to poll for approval/claimUrl.
+  // Store only a hash; return the raw token once on creation.
+  pollTokenHash String    @db.VarChar(255)
+  deliveredAt   DateTime?
+  agentId       BigInt?   @db.BigInt
+  claimedAt     DateTime?
+
+  status       AccessRequestStatus @default(pending)
+  decidedAt    DateTime?
+  decisionNote String?             @db.VarChar(1000)
+
+  createdAt DateTime @default(now())
+
+  campaign Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  agent    Agent?       @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  claim    ApiKeyClaim?
+
+  @@index([campaignId, createdAt])
+  @@index([status, createdAt])
+  @@index([pollTokenHash])
+  @@index([botId, createdAt])
+}
+
+model ApiKeyClaim {
+  id              BigInt    @id @default(autoincrement()) @db.BigInt
+  accessRequestId BigInt    @unique @db.BigInt
+  agentId         BigInt    @db.BigInt
+  tokenHash       String    @db.VarChar(255)
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime
+  claimedAt       DateTime?
+
+  accessRequest AccessRequest @relation(fields: [accessRequestId], references: [id], onDelete: Cascade)
+  agent         Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
 // Append-only event log (canonical state).
+model SessionSequence {
+  sessionId    BigInt @id @db.BigInt
+  nextSequence BigInt @db.BigInt
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
 model Event {
   id         BigInt @id @default(autoincrement()) @db.BigInt
   campaignId BigInt @db.BigInt

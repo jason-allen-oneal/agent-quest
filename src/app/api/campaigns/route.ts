@@ -16,10 +16,20 @@ export async function POST(req: NextRequest) {
   const name = String(body?.name ?? "Untitled Campaign").slice(0, 200);
   const settings = (body?.settings ?? {}) as Prisma.InputJsonValue;
 
-  const campaign = await prisma.campaign.create({
-    data: { name, settings },
-    select: { id: true, name: true, status: true, settings: true, createdAt: true },
+  const result = await prisma.$transaction(async (tx) => {
+    const campaign = await tx.campaign.create({
+      data: { name, settings },
+      select: { id: true, name: true, status: true, settings: true, createdAt: true },
+    });
+
+    // Model 4b: campaign is a single contained run; create exactly one session.
+    const session = await tx.session.create({
+      data: { campaignId: campaign.id },
+      select: { id: true, campaignId: true, status: true, createdAt: true },
+    });
+
+    return { campaign, session };
   });
 
-  return json({ campaign }, { status: 201 });
+  return json(result, { status: 201 });
 }
