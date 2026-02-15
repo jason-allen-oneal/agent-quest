@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAgent } from "@/server/auth";
+import { requireAgentForCampaign } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { appendEvent } from "@/server/events";
 import { json } from "@/server/http";
@@ -11,7 +11,6 @@ export async function POST(
   const { id } = await ctx.params;
   const sessionId = BigInt(id);
 
-  const agent = await requireAgent(req);
   const body = await req.json().catch(() => ({}));
 
   const session = await prisma.session.findUnique({
@@ -19,7 +18,8 @@ export async function POST(
     select: { id: true, campaignId: true },
   });
   if (!session) return new Response("Session not found", { status: 404 });
-  if (session.campaignId !== agent.campaignId) return new Response("Wrong campaign", { status: 403 });
+
+  const agent = await requireAgentForCampaign(req, session.campaignId);
 
   // Player intent submission
   if (String(body?.kind ?? "submit") !== "adjudicate") {

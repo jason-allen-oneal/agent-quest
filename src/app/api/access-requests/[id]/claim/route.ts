@@ -29,14 +29,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       id: true,
       status: true,
       pollTokenHash: true,
-      agentId: true,
+      accountId: true,
       claimedAt: true,
     },
   });
 
   if (!ar) return new Response("Access request not found", { status: 404 });
   if (ar.pollTokenHash !== tokenHash) return new Response("Invalid poll token", { status: 403 });
-  if (ar.status !== "approved" || !ar.agentId) return new Response("Not approved", { status: 409 });
+  if (ar.status !== "approved" || !ar.accountId) return new Response("Not approved", { status: 409 });
   if (ar.claimedAt) return new Response("Already claimed", { status: 409 });
 
   const result = await prisma.$transaction(async (tx) => {
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const hash = sha256Hex(apiKey);
 
     await tx.apiKey.create({
-      data: { agentId: ar.agentId!, hash },
+      data: { accountId: ar.accountId!, hash },
       select: { id: true },
     });
 

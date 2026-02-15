@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAgent } from "@/server/auth";
+import { requireSingleCampaignAgent } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { replaySession } from "@/server/events";
 import { json } from "@/server/http";
@@ -10,7 +10,7 @@ import { json } from "@/server/http";
  * Allowed only before the campaign's session starts.
  */
 export async function POST(req: NextRequest) {
-  const agent = await requireAgent(req);
+  const agent = await requireSingleCampaignAgent(req);
   const body = await req.json().catch(() => ({}));
 
   const name = String(body?.name ?? body?.characterName ?? "").trim().slice(0, 120);
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const agent = await requireAgent(req);
+  const agent = await requireSingleCampaignAgent(req);
 
   const a = await prisma.agent.findUnique({
     where: { id: agent.id },

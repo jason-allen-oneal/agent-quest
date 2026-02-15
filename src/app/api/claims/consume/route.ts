@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       claimedAt: null,
       expiresAt: { gt: new Date() },
     },
-    select: { id: true, agentId: true, accessRequestId: true, expiresAt: true },
+    select: { id: true, accountId: true, accessRequestId: true, expiresAt: true },
   });
 
   if (!claim) return new Response("Invalid or expired claim", { status: 404 });
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     const hash = sha256Hex(apiKey);
 
     await tx.apiKey.create({
-      data: { agentId: claim.agentId, hash },
+      data: { accountId: claim.accountId, hash },
       select: { id: true },
     });
 

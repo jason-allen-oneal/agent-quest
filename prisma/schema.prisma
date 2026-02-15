@@ -42,11 +42,12 @@ model Campaign {
   createdAt  DateTime  @default(now())
   archivedAt DateTime?
 
-  sessions       Session[]
-  characters     Character[]
-  agents         Agent[]
-  events         Event[]
-  accessRequests AccessRequest[]
+  sessions   Session[]
+  characters Character[]
+  agents     Agent[]
+  events     Event[]
+  invites    CampaignInvite[]
+  // accessRequests are platform-scoped (not campaign-scoped)
 
   @@index([createdAt])
 }
@@ -81,42 +82,60 @@ model Character {
   @@index([createdByAgentId, createdAt])
 }
 
+model Account {
+  id           BigInt    @id @default(autoincrement()) @db.BigInt
+  // Stable identity across campaigns (agent-supplied). This is the canonical bot identity.
+  botId        String    @unique @db.VarChar(120)
+  name         String    @db.VarChar(120)
+  // Platform-level role (what the admin approved for this account).
+  // Campaign membership roles may be equal-or-lower depending on how the account joins a campaign.
+  platformRole AgentRole
+  createdAt    DateTime  @default(now())
+
+  agents         Agent[]
+  apiKeys        ApiKey[]
+  accessRequests AccessRequest[]
+  apiKeyClaims   ApiKeyClaim[]
+  usedInvites    CampaignInvite[]
+
+  @@index([platformRole, createdAt])
+}
+
 model Agent {
   id          BigInt    @id @default(autoincrement()) @db.BigInt
+  accountId   BigInt    @db.BigInt
   campaignId  BigInt    @db.BigInt
   characterId BigInt?   @db.BigInt
   role        AgentRole
   name        String    @db.VarChar(120)
-  // Stable identity across campaigns (agent-supplied). Used for per-bot limits.
-  botId       String?   @db.VarChar(120)
   createdAt   DateTime  @default(now())
 
+  account   Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
   campaign  Campaign   @relation(fields: [campaignId], references: [id], onDelete: Restrict)
   character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
 
-  apiKeys           ApiKey[]
-  claims            ApiKeyClaim[]
   events            Event[]
-  accessRequests    AccessRequest[]
-  createdCharacters Character[]     @relation("CharacterCreator")
+  createdCharacters Character[]      @relation("CharacterCreator")
+  createdInvites    CampaignInvite[]
 
+  @@unique([accountId, campaignId])
+  @@index([accountId, createdAt])
   @@index([campaignId, createdAt])
   @@index([characterId, createdAt])
-  @@index([botId, createdAt])
 }
 
 model ApiKey {
   id        BigInt    @id @default(autoincrement()) @db.BigInt
-  agentId   BigInt    @db.BigInt
+  accountId BigInt    @db.BigInt
   // Store only a hash (never the raw key)
   hash      String    @db.VarChar(255)
   createdAt DateTime  @default(now())
   revokedAt DateTime?
 
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([hash])
-  @@index([agentId, createdAt])
+  @@index([accountId, createdAt])
 }
 
 enum AccessRequestStatus {
@@ -127,12 +146,10 @@ enum AccessRequestStatus {
 
 model AccessRequest {
   id            BigInt    @id @default(autoincrement()) @db.BigInt
-  campaignId    BigInt    @db.BigInt
   requestedRole AgentRole
   name          String    @db.VarChar(120)
-  // Optional stable identity across campaigns (agent-supplied)
-  botId         String?   @db.VarChar(120)
-  characterName String?   @db.VarChar(120)
+  // Stable identity across campaigns (agent-supplied). Required for platform onboarding.
+  botId         String    @db.VarChar(120)
   message       String?   @db.VarChar(1000)
   tags          Json      @default("[]")
 
@@ -140,7 +157,7 @@ model AccessRequest {
   // Store only a hash; return the raw token once on creation.
   pollTokenHash String    @db.VarChar(255)
   deliveredAt   DateTime?
-  agentId       BigInt?   @db.BigInt
+  accountId     BigInt?   @db.BigInt
   claimedAt     DateTime?
 
   status       AccessRequestStatus @default(pending)
@@ -149,31 +166,50 @@ model AccessRequest {
 
   createdAt DateTime @default(now())
 
-  campaign Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  agent    Agent?       @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  claim    ApiKeyClaim?
+  account Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  claim   ApiKeyClaim?
 
-  @@index([campaignId, createdAt])
   @@index([status, createdAt])
   @@index([pollTokenHash])
   @@index([botId, createdAt])
+  @@index([accountId, createdAt])
 }
 
 model ApiKeyClaim {
   id              BigInt    @id @default(autoincrement()) @db.BigInt
   accessRequestId BigInt    @unique @db.BigInt
-  agentId         BigInt    @db.BigInt
+  accountId       BigInt    @db.BigInt
   tokenHash       String    @db.VarChar(255)
   createdAt       DateTime  @default(now())
   expiresAt       DateTime
   claimedAt       DateTime?
 
   accessRequest AccessRequest @relation(fields: [accessRequestId], references: [id], onDelete: Cascade)
-  agent         Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  account       Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  @@index([agentId, createdAt])
+  @@index([accountId, createdAt])
   @@index([tokenHash])
   @@index([expiresAt])
+}
+
+model CampaignInvite {
+  id               BigInt    @id @default(autoincrement()) @db.BigInt
+  campaignId       BigInt    @db.BigInt
+  createdByAgentId BigInt    @db.BigInt
+  codeHash         String    @unique @db.VarChar(255)
+  // Single-use invites: remainingUses starts at 1 and is decremented to 0 on join.
+  remainingUses    Int       @default(1)
+  createdAt        DateTime  @default(now())
+  usedAt           DateTime?
+  usedByAccountId  BigInt?   @db.BigInt
+
+  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdBy Agent    @relation(fields: [createdByAgentId], references: [id], onDelete: Cascade)
+  usedBy    Account? @relation(fields: [usedByAccountId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, createdAt])
+  @@index([createdByAgentId, createdAt])
+  @@index([remainingUses, createdAt])
 }
 
 // Append-only event log (canonical state).

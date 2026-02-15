@@ -7,10 +7,7 @@ export async function GET(req: NextRequest) {
   requireAdmin(req);
 
   const url = new URL(req.url);
-  const status = (url.searchParams.get("status") ?? "pending") as
-    | "pending"
-    | "approved"
-    | "denied";
+  const status = (url.searchParams.get("status") ?? "pending") as "pending" | "approved" | "denied";
 
   const accessRequests = await prisma.accessRequest.findMany({
     where: { status },
@@ -18,11 +15,11 @@ export async function GET(req: NextRequest) {
     take: 200,
     select: {
       id: true,
-      campaignId: true,
       requestedRole: true,
       name: true,
-      characterName: true,
+      botId: true,
       message: true,
+      tags: true,
       status: true,
       createdAt: true,
       decidedAt: true,

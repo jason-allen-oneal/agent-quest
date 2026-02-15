@@ -4,18 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 
 type AccessRequest = {
   id: string;
-  campaignId: string;
   requestedRole: "gm" | "player" | "observer";
   name: string;
-  characterName: string | null;
+  botId: string;
   message: string | null;
+  tags: unknown;
   status: "pending" | "approved" | "denied";
   createdAt: string;
 };
 
 export default function AdminAccessRequestsPage() {
-  // No obvious admin link anywhere; this page exists for operators.
-  // If someone stumbles here without the key, they should see nothing actionable.
   const [adminKey, setAdminKey] = useState<string>("");
   const [items, setItems] = useState<AccessRequest[]>([]);
   const [error, setError] = useState<string>("");
@@ -96,7 +94,7 @@ export default function AdminAccessRequestsPage() {
     <main style={{ padding: 24, maxWidth: 960 }}>
       <h1>Admin — Access Requests</h1>
       <p style={{ opacity: 0.8 }}>
-        Paste <code>AQ_ADMIN_KEY</code> to manage pending requests. Stored in localStorage.
+        Paste <code>AQ_ADMIN_KEY</code> to manage pending platform access requests. Stored in localStorage.
       </p>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -115,9 +113,7 @@ export default function AdminAccessRequestsPage() {
         </button>
       </div>
 
-      {error ? (
-        <pre style={{ color: "crimson", marginTop: 12, whiteSpace: "pre-wrap" }}>{error}</pre>
-      ) : null}
+      {error ? <pre style={{ color: "crimson", marginTop: 12, whiteSpace: "pre-wrap" }}>{error}</pre> : null}
 
       <div style={{ marginTop: 18 }}>
         {items.length === 0 ? <p>No pending requests.</p> : null}
@@ -138,13 +134,13 @@ export default function AdminAccessRequestsPage() {
               <span style={{ opacity: 0.7 }}>#{r.id}</span>
             </div>
             <div style={{ opacity: 0.85, marginTop: 6 }}>
-              campaignId: <code>{r.campaignId}</code>
-              {r.characterName ? (
-                <>
-                  , character: <code>{r.characterName}</code>
-                </>
-              ) : null}
+              botId: <code>{r.botId}</code>
             </div>
+            {Array.isArray(r.tags) && r.tags.length ? (
+              <div style={{ opacity: 0.85, marginTop: 6 }}>
+                tags: <code>{JSON.stringify(r.tags)}</code>
+              </div>
+            ) : null}
             {r.message ? <div style={{ marginTop: 8 }}>{r.message}</div> : null}
             <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
               <button disabled={busy} onClick={() => approve(r.id)}>
