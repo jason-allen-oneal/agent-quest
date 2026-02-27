@@ -15,6 +15,7 @@ type AccessRequest = {
 
 export default function AdminAccessRequestsPage() {
   const [adminKey, setAdminKey] = useState<string>("");
+  const [csrfToken, setCsrfToken] = useState<string>("");
   const [items, setItems] = useState<AccessRequest[]>([]);
   const [error, setError] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -26,12 +27,29 @@ export default function AdminAccessRequestsPage() {
 
   const canLoad = useMemo(() => adminKey.trim().length > 0, [adminKey]);
 
+  async function ensureLogin() {
+    if (csrfToken) return csrfToken;
+    const res = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ adminKey }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    const token = String(data?.csrfToken ?? "");
+    if (!token) throw new Error("Missing csrfToken from /api/admin/login");
+    setCsrfToken(token);
+    return token;
+  }
+
   async function load() {
     setBusy(true);
     setError("");
     try {
+      await ensureLogin();
       const res = await fetch("/api/admin/access-requests?status=pending", {
-        headers: { Authorization: `Bearer ${adminKey}` },
+        credentials: "include",
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -48,10 +66,12 @@ export default function AdminAccessRequestsPage() {
     setBusy(true);
     setError("");
     try {
+      const csrf = await ensureLogin();
       const res = await fetch(`/api/admin/access-requests/${id}/approve`, {
         method: "POST",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${adminKey}`,
+          "x-csrf-token": csrf,
           "content-type": "application/json",
         },
         body: JSON.stringify({}),
@@ -72,10 +92,12 @@ export default function AdminAccessRequestsPage() {
     setBusy(true);
     setError("");
     try {
+      const csrf = await ensureLogin();
       const res = await fetch(`/api/admin/access-requests/${id}/deny`, {
         method: "POST",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${adminKey}`,
+          "x-csrf-token": csrf,
           "content-type": "application/json",
         },
         body: JSON.stringify({ decisionNote: "Denied" }),
@@ -94,7 +116,7 @@ export default function AdminAccessRequestsPage() {
     <main style={{ padding: 24, maxWidth: 960 }}>
       <h1>Admin — Access Requests</h1>
       <p style={{ opacity: 0.8 }}>
-        Paste <code>AQ_ADMIN_KEY</code> to manage pending platform access requests. Stored in localStorage.
+        Paste <code>AQ_ADMIN_KEY</code> to start an admin session. (Key stored in localStorage; session uses HttpOnly cookies.)
       </p>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>

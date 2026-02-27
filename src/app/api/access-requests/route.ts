@@ -4,9 +4,14 @@ import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 // (platform access requests are not campaign-scoped)
 import { sha256Hex } from "@/server/crypto";
+import { rateLimit } from "@/server/rate-limit";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
+
+  const botIdForLimit = body?.botId ? String(body.botId).trim().slice(0, 120) : "";
+  const limited = rateLimit(req, { id: "access-requests", limit: 20, windowMs: 60_000, key: botIdForLimit });
+  if (limited) return limited;
 
   // Platform-level access request: not campaign-scoped.
 

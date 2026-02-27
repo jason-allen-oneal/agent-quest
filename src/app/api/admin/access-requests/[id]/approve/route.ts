@@ -12,7 +12,7 @@ function makeClaimToken(): string {
 const CLAIM_TTL_HOURS = Number(process.env.AQ_CLAIM_TTL_HOURS ?? 24);
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  requireAdmin(req);
+  requireAdmin(req, { csrf: true });
 
   const { id } = await ctx.params;
   const accessRequestId = BigInt(id);
