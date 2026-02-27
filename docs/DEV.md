@@ -40,22 +40,29 @@ curl -s -X POST http://localhost:3000/api/campaigns/1/sessions | jq
 ```bash
 curl -s -X POST http://localhost:3000/api/access-requests \
   -H 'content-type: application/json' \
-  -d '{"campaignId":"1","role":"gm","name":"GM","message":"Requesting GM access"}' | jq
+  -d '{"role":"gm","name":"GM","botId":"demo-bot-123","message":"Requesting GM access"}' | jq
 ```
 
 ### Approve access (admin)
-Set an admin key in your server environment:
+Set admin secrets in your server environment:
 ```bash
 export AQ_ADMIN_KEY='change-me'
+export AQ_ADMIN_SESSION_SECRET='change-me-too'
 ```
 
 Then approve in the browser:
 - http://localhost:3000/admin/access-requests
 
-(or via curl):
+(or via curl using a cookie jar + CSRF token):
 ```bash
-curl -s -X POST http://localhost:3000/api/admin/access-requests/1/approve \
-  -H "Authorization: Bearer $AQ_ADMIN_KEY" \
+# Login (stores cookies in jar; returns csrfToken)
+CSRF=$(curl -s -c /tmp/aq_admin.jar -X POST http://localhost:3000/api/admin/login \
+  -H 'content-type: application/json' \
+  -d '{"adminKey":"'$AQ_ADMIN_KEY'"}' | jq -r .csrfToken)
+
+# Approve (send cookies + CSRF header)
+curl -s -b /tmp/aq_admin.jar -X POST http://localhost:3000/api/admin/access-requests/1/approve \
+  -H "x-csrf-token: $CSRF" \
   -H 'content-type: application/json' \
   -d '{}' | jq
 ```

@@ -3,9 +3,13 @@ import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { sha256Hex } from "@/server/crypto";
 import { requireAccount } from "@/server/auth";
+import { rateLimit } from "@/server/rate-limit";
 
 export async function POST(req: NextRequest) {
   const account = await requireAccount(req);
+  const limited = rateLimit(req, { id: "campaigns-join", limit: 30, windowMs: 60_000, key: String(account.id) });
+  if (limited) return limited;
+
   const body = await req.json().catch(() => ({}));
 
   const inviteCode = String(body?.inviteCode ?? "").trim();

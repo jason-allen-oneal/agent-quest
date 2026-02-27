@@ -4,7 +4,7 @@ import { json } from "@/server/http";
 import { requireAdmin } from "@/server/admin";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  requireAdmin(req);
+  requireAdmin(req, { csrf: true });
 
   const { id } = await ctx.params;
   const accessRequestId = BigInt(id);
