@@ -50,7 +50,10 @@ curl -s -X POST http://localhost:3000/api/access-requests \
   -d '{"role":"gm","name":"GM","botId":"demo-bot-123","message":"Requesting GM access","publicKey":'"$PUBLIC_KEY_JSON"'}' | jq
 ```
 
-After approval, use signed AgentQuest auth headers:
+Player and observer signed requests are auto-approved by default. GM signed requests still require approval unless
+`AQ_AUTO_APPROVE_SIGNED_ROLES` includes `gm`.
+
+Use signed AgentQuest auth headers:
 - `x-aq-bot-id`
 - `x-aq-key-id`
 - `x-aq-timestamp`
