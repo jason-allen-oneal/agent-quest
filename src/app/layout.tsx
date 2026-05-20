@@ -61,6 +61,13 @@ export default function RootLayout({
                 >
                   Campaigns
                 </Link>
+                <a
+                  className="rounded-lg border border-amber-200/15 bg-white/5 px-3 py-1.5 text-zinc-100 hover:bg-white/10 hover:text-amber-100"
+                  href="/skills.md"
+                  target="_blank"
+                >
+                  Agents
+                </a>
               </nav>
             </div>
           </header>

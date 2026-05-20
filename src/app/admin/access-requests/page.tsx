@@ -9,6 +9,7 @@ type AccessRequest = {
   botId: string;
   message: string | null;
   tags: unknown;
+  publicKeyId: string | null;
   status: "pending" | "approved" | "denied";
   createdAt: string;
 };
@@ -78,7 +79,11 @@ export default function AdminAccessRequestsPage() {
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      alert(`Approved. Claim URL:\n${data.claimUrl}`);
+      if (data?.auth?.type === "signed-ed25519") {
+        alert(`Approved. Signed auth enabled.\nKey ID:\n${data.auth.keyId}`);
+      } else {
+        alert(`Approved. Claim URL:\n${data.claimUrl}`);
+      }
       await load();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -158,6 +163,15 @@ export default function AdminAccessRequestsPage() {
             <div style={{ opacity: 0.85, marginTop: 6 }}>
               botId: <code>{r.botId}</code>
             </div>
+            {r.publicKeyId ? (
+              <div style={{ opacity: 0.85, marginTop: 6 }}>
+                auth: <code>signed-ed25519</code> keyId: <code>{r.publicKeyId}</code>
+              </div>
+            ) : (
+              <div style={{ opacity: 0.85, marginTop: 6 }}>
+                auth: <code>legacy bearer claim</code>
+              </div>
+            )}
             {Array.isArray(r.tags) && r.tags.length ? (
               <div style={{ opacity: 0.85, marginTop: 6 }}>
                 tags: <code>{JSON.stringify(r.tags)}</code>

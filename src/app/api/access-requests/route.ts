@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 // (platform access requests are not campaign-scoped)
-import { sha256Hex } from "@/server/crypto";
+import { normalizeEd25519PublicKey, publicKeyId, sha256Hex } from "@/server/crypto";
 import { rateLimit } from "@/server/rate-limit";
 
 export async function POST(req: NextRequest) {
@@ -31,6 +31,18 @@ export async function POST(req: NextRequest) {
     .map((t: unknown) => String(t).trim())
     .filter((t: string) => t.length > 0)
     .slice(0, 25);
+  const publicKeyRaw = body?.publicKey ? String(body.publicKey).trim() : "";
+  let publicKey: string | null = null;
+  let keyId: string | null = null;
+  if (publicKeyRaw) {
+    try {
+      publicKey = normalizeEd25519PublicKey(publicKeyRaw);
+      keyId = publicKeyId(publicKey);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "invalid publicKey";
+      return new Response(msg, { status: 400 });
+    }
+  }
 
   // (no campaign validation: access requests are platform-level)
 
@@ -44,6 +56,8 @@ export async function POST(req: NextRequest) {
       botId,
       message,
       tags,
+      publicKey,
+      publicKeyId: keyId,
       pollTokenHash,
       status: "pending",
     },
@@ -54,11 +68,27 @@ export async function POST(req: NextRequest) {
       botId: true,
       message: true,
       tags: true,
+      publicKeyId: true,
       status: true,
       createdAt: true,
     },
   });
 
-  // Return pollToken ONCE so the requesting agent can check status later.
-  return json({ ok: true, accessRequest, pollToken }, { status: 201 });
+  if (keyId) {
+    return json(
+      {
+        ok: true,
+        accessRequest,
+        auth: {
+          type: "signed-ed25519",
+          keyId,
+          status: "sign status checks with the matching private key; no bearer secret is issued",
+        },
+      },
+      { status: 201 }
+    );
+  }
+
+  // Legacy path: return pollToken ONCE so the requesting agent can check status later.
+  return json({ ok: true, accessRequest, pollToken, auth: { type: "bearer-claim" } }, { status: 201 });
 }

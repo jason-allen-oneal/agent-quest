@@ -1,37 +1,36 @@
 import Link from "next/link";
-
-import { getBaseUrl } from "@/server/baseUrl";
-
-async function getCampaign(id: string) {
-  const base = await getBaseUrl();
-  const res = await fetch(`${base}/api/campaigns`, { cache: "no-store" });
-  const data = (await res.json()) as { campaigns: Array<{ id: string; name: string; status: string }> };
-  const campaign = data.campaigns.find((c) => c.id === id);
-  if (!campaign) throw new Error("Campaign not found");
-  return campaign;
-}
-
-async function getSessions(campaignId: string) {
-  const base = await getBaseUrl();
-  const res = await fetch(`${base}/api/campaigns/${campaignId}/sessions`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to load sessions");
-  return (await res.json()) as {
-    sessions: Array<{
-      id: string;
-      status: string;
-      createdAt: string;
-      startedAt: string | null;
-      endedAt: string | null;
-      lastSequence: string;
-      lastEventAt: string | null;
-    }>;
-  };
-}
+import { prisma } from "@/server/db";
+import { notFound } from "next/navigation";
 
 export default async function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const campaign = await getCampaign(id);
-  const sessionsData = await getSessions(id);
+  const campaignId = BigInt(id);
+
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: { id: true, name: true, status: true },
+  });
+  if (!campaign) notFound();
+
+  const sessions = await prisma.session.findMany({
+    where: { campaignId },
+    orderBy: [{ createdAt: "desc" }],
+    select: { id: true, campaignId: true, status: true, createdAt: true, startedAt: true, endedAt: true },
+    take: 200,
+  });
+
+  const lastBySession = await prisma.event.groupBy({
+    by: ["sessionId"],
+    where: { campaignId },
+    _max: { sequence: true, createdAt: true },
+  });
+
+  const lastMap = new Map(
+    lastBySession.map((r) => [
+      r.sessionId.toString(),
+      { lastSequence: r._max.sequence?.toString() ?? "0", lastEventAt: r._max.createdAt?.toISOString() ?? null },
+    ])
+  );
 
   return (
     <main className="mx-auto max-w-5xl p-8">
@@ -44,29 +43,32 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
           Watch the live chronicle or browse older sessions.
         </p>
 
-        {sessionsData.sessions.length === 0 ? (
+        {sessions.length === 0 ? (
           <p className="mt-4 text-sm text-zinc-500">No sessions yet.</p>
         ) : (
           <ul className="mt-4 space-y-3">
-            {sessionsData.sessions.map((s) => (
-              <li key={s.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="font-medium">Session {s.id}</div>
-                    <div className="mt-1 text-sm text-zinc-400">
-                      {s.status} · last seq {s.lastSequence}
-                      {s.lastEventAt ? ` · last event ${new Date(s.lastEventAt).toLocaleString()}` : ""}
+            {sessions.map((s) => {
+              const extra = lastMap.get(s.id.toString());
+              return (
+                <li key={s.id.toString()} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="font-medium">Session {s.id.toString()}</div>
+                      <div className="mt-1 text-sm text-zinc-400">
+                        {s.status} · last seq {extra?.lastSequence ?? "0"}
+                        {extra?.lastEventAt ? ` · last event ${new Date(extra.lastEventAt).toLocaleString()}` : ""}
+                      </div>
                     </div>
+                    <Link
+                      className="rounded-md bg-white px-3 py-1.5 text-sm font-medium text-zinc-950"
+                      href={`/sessions/${s.id.toString()}`}
+                    >
+                      Watch
+                    </Link>
                   </div>
-                  <Link
-                    className="rounded-md bg-white px-3 py-1.5 text-sm font-medium text-zinc-950"
-                    href={`/sessions/${s.id}`}
-                  >
-                    Watch
-                  </Link>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
 

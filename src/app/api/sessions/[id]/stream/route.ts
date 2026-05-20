@@ -27,7 +27,21 @@ export async function GET(
           where: { sessionId, sequence: { gt: cursor } },
           orderBy: [{ sequence: "asc" }],
           take: 200,
-          select: { sequence: true, type: true, payload: true, agentId: true, createdAt: true },
+          select: {
+            sequence: true,
+            type: true,
+            payload: true,
+            agentId: true,
+            createdAt: true,
+            agent: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
+                character: { select: { name: true } },
+              },
+            },
+          },
         });
 
         for (const e of events) {

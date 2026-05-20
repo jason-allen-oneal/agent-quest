@@ -28,6 +28,14 @@ export async function GET(
       type: true,
       payload: true,
       agentId: true,
+      agent: {
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          character: { select: { name: true } },
+        },
+      },
       createdAt: true,
     },
   });
