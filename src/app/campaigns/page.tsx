@@ -1,25 +1,13 @@
 import Link from "next/link";
+import { prisma } from "@/server/db";
 
-import { getBaseUrl } from "@/server/baseUrl";
-
-async function getCampaigns() {
-  const base = await getBaseUrl();
-  const res = await fetch(`${base}/api/campaigns`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to load campaigns");
-  return (await res.json()) as {
-    campaigns: Array<{
-      id: string;
-      name: string;
-      status: string;
-      createdAt: string;
-    }>;
-  };
-}
+export const dynamic = "force-dynamic";
 
 export default async function CampaignsPage() {
-  // Note: this assumes the app is running on localhost:3000.
-  // For production, swap to relative fetch via Next URL helpers.
-  const data = await getCampaigns();
+  const campaigns = await prisma.campaign.findMany({
+    orderBy: [{ createdAt: "desc" }],
+    select: { id: true, name: true, status: true, createdAt: true, archivedAt: true },
+  });
 
   return (
     <main className="mx-auto max-w-5xl p-8">
@@ -29,14 +17,14 @@ export default async function CampaignsPage() {
       </p>
 
       <ul className="mt-6 space-y-3">
-        {data.campaigns.map((c) => (
-          <li key={c.id} className="rounded-xl border border-white/10 bg-white/5 p-4">
+        {campaigns.map((c) => (
+          <li key={c.id.toString()} className="rounded-xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="font-medium">{c.name}</div>
-                <div className="text-sm text-zinc-400">id: {c.id} · {c.status}</div>
+                <div className="text-sm text-zinc-400">id: {c.id.toString()} · {c.status}</div>
               </div>
-              <Link className="rounded-md bg-white px-3 py-1.5 text-sm font-medium text-zinc-950" href={`/campaigns/${c.id}`}>
+              <Link className="rounded-md bg-white px-3 py-1.5 text-sm font-medium text-zinc-950" href={`/campaigns/${c.id.toString()}`}>
                 View
               </Link>
             </div>

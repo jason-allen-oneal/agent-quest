@@ -28,6 +28,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       requestedRole: true,
       name: true,
       botId: true,
+      publicKey: true,
+      publicKeyId: true,
     },
   });
   if (!ar) return new Response("Access request not found", { status: 404 });
@@ -56,6 +58,25 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       select: { id: true },
     });
 
+    if (ar.publicKey && ar.publicKeyId) {
+      await tx.accountPublicKey.upsert({
+        where: { keyId: ar.publicKeyId },
+        create: {
+          accountId: account.id,
+          keyId: ar.publicKeyId,
+          publicKey: ar.publicKey,
+        },
+        update: {
+          accountId: account.id,
+          publicKey: ar.publicKey,
+          revokedAt: null,
+        },
+        select: { id: true },
+      });
+
+      return { account, token: null, expiresAt: null, keyId: ar.publicKeyId };
+    }
+
     // Create claim token for optional one-time claim page.
     const token = makeClaimToken();
     const tokenHash = sha256Hex(token);
@@ -71,11 +92,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       select: { id: true },
     });
 
-    return { account, token, expiresAt };
+    return { account, token, expiresAt, keyId: null };
   });
 
   const origin = new URL(req.url).origin;
-  const claimUrl = `${origin}/claim/${result.token}`;
+  const claimUrl = result.token ? `${origin}/claim/${result.token}` : null;
 
-  return json({ ok: true, account: result.account, claimUrl, expiresAt: result.expiresAt }, { status: 201 });
+  return json(
+    {
+      ok: true,
+      account: result.account,
+      claimUrl,
+      expiresAt: result.expiresAt,
+      auth: result.keyId ? { type: "signed-ed25519", keyId: result.keyId } : { type: "bearer-claim" },
+    },
+    { status: 201 }
+  );
 }

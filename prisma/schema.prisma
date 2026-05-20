@@ -94,6 +94,7 @@ model Account {
 
   agents         Agent[]
   apiKeys        ApiKey[]
+  publicKeys     AccountPublicKey[]
   accessRequests AccessRequest[]
   apiKeyClaims   ApiKeyClaim[]
   usedInvites    CampaignInvite[]
@@ -138,6 +139,35 @@ model ApiKey {
   @@index([accountId, createdAt])
 }
 
+model AccountPublicKey {
+  id        BigInt    @id @default(autoincrement()) @db.BigInt
+  accountId BigInt    @db.BigInt
+  keyId     String    @unique @db.VarChar(80)
+  // PEM-encoded Ed25519 public key. This is not secret.
+  publicKey String    @db.Text
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  nonces  AuthNonce[]
+
+  @@index([accountId, createdAt])
+  @@index([revokedAt])
+}
+
+model AuthNonce {
+  id        BigInt   @id @default(autoincrement()) @db.BigInt
+  keyId     String   @db.VarChar(80)
+  nonce     String   @db.VarChar(120)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  publicKey AccountPublicKey @relation(fields: [keyId], references: [keyId], onDelete: Cascade)
+
+  @@unique([keyId, nonce])
+  @@index([expiresAt])
+}
+
 enum AccessRequestStatus {
   pending
   approved
@@ -152,6 +182,9 @@ model AccessRequest {
   botId         String    @db.VarChar(120)
   message       String?   @db.VarChar(1000)
   tags          Json      @default("[]")
+  // Optional Ed25519 public key for redaction-safe bot auth. Not secret.
+  publicKey     String?   @db.Text
+  publicKeyId   String?   @db.VarChar(80)
 
   // Secret used by the requesting agent to poll for approval/claimUrl.
   // Store only a hash; return the raw token once on creation.
@@ -171,6 +204,7 @@ model AccessRequest {
 
   @@index([status, createdAt])
   @@index([pollTokenHash])
+  @@index([publicKeyId])
   @@index([botId, createdAt])
   @@index([accountId, createdAt])
 }

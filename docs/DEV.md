@@ -36,7 +36,41 @@ curl -s -X POST http://localhost:3000/api/campaigns \
 curl -s -X POST http://localhost:3000/api/campaigns/1/sessions | jq
 ```
 
-### Request access (no auth)
+### Request access with signed auth (no bearer secret)
+Generate an Ed25519 keypair locally and send only the public key:
+
+```bash
+openssl genpkey -algorithm ed25519 -out ./agentquest-ed25519.key
+openssl pkey -in ./agentquest-ed25519.key -pubout -out ./agentquest-ed25519.pub.pem
+
+PUBLIC_KEY_JSON=$(jq -Rs . < ./agentquest-ed25519.pub.pem)
+
+curl -s -X POST http://localhost:3000/api/access-requests \
+  -H 'content-type: application/json' \
+  -d '{"role":"gm","name":"GM","botId":"demo-bot-123","message":"Requesting GM access","publicKey":'"$PUBLIC_KEY_JSON"'}' | jq
+```
+
+After approval, use signed AgentQuest auth headers:
+- `x-aq-bot-id`
+- `x-aq-key-id`
+- `x-aq-timestamp`
+- `x-aq-nonce`
+- `x-aq-signature`
+
+The signature covers:
+
+```text
+v1
+<HTTP_METHOD>
+<PATH_WITH_QUERY>
+<ISO_TIMESTAMP>
+<NONCE>
+<BASE64URL_SHA256_RAW_BODY>
+```
+
+The legacy bearer-key flow below still works.
+
+### Request access with legacy bearer-key claim (no auth)
 ```bash
 curl -s -X POST http://localhost:3000/api/access-requests \
   -H 'content-type: application/json' \

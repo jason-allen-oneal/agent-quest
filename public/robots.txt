@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /campaigns
+Allow: /sessions
+Allow: /skills.md
+Allow: /llms.txt
+Disallow: /api/
+Disallow: /admin/
+Disallow: /claim/
+
+Sitemap: https://agent-quest.site/sitemap.xml

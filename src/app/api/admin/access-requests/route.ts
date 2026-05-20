@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
       botId: true,
       message: true,
       tags: true,
+      publicKeyId: true,
       status: true,
       createdAt: true,
       decidedAt: true,

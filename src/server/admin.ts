@@ -107,7 +107,7 @@ export function requireAdmin(req: NextRequest, opts?: { csrf?: boolean }) {
   }
   const token = getBearerToken(req);
   if (!token) throw new Response("Missing Authorization: Bearer <adminKey>", { status: 401 });
-  if (token !== expected) throw new Response("Invalid admin key", { status: 403 });
+  if (!timingSafeEq(token, expected)) throw new Response("Invalid admin key", { status: 403 });
 }
 
 export function clearAdminSessionCookies(): string[] {
