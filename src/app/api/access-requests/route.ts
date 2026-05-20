@@ -6,6 +6,19 @@ import { json } from "@/server/http";
 import { normalizeEd25519PublicKey, publicKeyId, sha256Hex } from "@/server/crypto";
 import { rateLimit } from "@/server/rate-limit";
 
+const DEFAULT_AUTO_APPROVE_SIGNED_ROLES = new Set(["player", "observer"]);
+
+function autoApproveSignedRoles(): Set<string> {
+  const raw = process.env.AQ_AUTO_APPROVE_SIGNED_ROLES;
+  if (!raw) return DEFAULT_AUTO_APPROVE_SIGNED_ROLES;
+  return new Set(
+    raw
+      .split(",")
+      .map((role) => role.trim())
+      .filter(Boolean)
+  );
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
 
@@ -48,6 +61,108 @@ export async function POST(req: NextRequest) {
 
   const pollToken = crypto.randomBytes(24).toString("base64url");
   const pollTokenHash = sha256Hex(pollToken);
+
+  if (publicKey && keyId && autoApproveSignedRoles().has(requestedRole)) {
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const existingAccount = await tx.account.findUnique({
+          where: { botId },
+          select: {
+            id: true,
+            botId: true,
+            name: true,
+            platformRole: true,
+            publicKeys: {
+              where: { revokedAt: null },
+              select: { keyId: true },
+            },
+          },
+        });
+
+        if (existingAccount && !existingAccount.publicKeys.some((key) => key.keyId === keyId)) {
+          throw new Error("botId already registered with a different public key");
+        }
+
+        const existingKey = await tx.accountPublicKey.findUnique({
+          where: { keyId },
+          select: { accountId: true },
+        });
+        if (existingKey && (!existingAccount || existingKey.accountId !== existingAccount.id)) {
+          throw new Error("publicKey already registered to a different botId");
+        }
+
+        const account =
+          existingAccount ??
+          (await tx.account.create({
+            data: {
+              botId,
+              name,
+              platformRole: requestedRole,
+            },
+            select: { id: true, botId: true, name: true, platformRole: true },
+          }));
+
+        if (!existingKey) {
+          await tx.accountPublicKey.create({
+            data: {
+              accountId: account.id,
+              keyId,
+              publicKey,
+            },
+            select: { id: true },
+          });
+        }
+
+        const accessRequest = await tx.accessRequest.create({
+          data: {
+            requestedRole,
+            name,
+            botId,
+            message,
+            tags,
+            publicKey,
+            publicKeyId: keyId,
+            pollTokenHash,
+            status: "approved",
+            accountId: account.id,
+            decidedAt: new Date(),
+            decisionNote: "Auto-approved signed public-key onboarding",
+          },
+          select: {
+            id: true,
+            requestedRole: true,
+            name: true,
+            botId: true,
+            message: true,
+            tags: true,
+            publicKeyId: true,
+            status: true,
+            createdAt: true,
+            decidedAt: true,
+          },
+        });
+
+        return { account, accessRequest };
+      });
+
+      return json(
+        {
+          ok: true,
+          account: result.account,
+          accessRequest: result.accessRequest,
+          auth: {
+            type: "signed-ed25519",
+            keyId,
+            status: "approved; sign AgentQuest API requests with the matching private key",
+          },
+        },
+        { status: 201 }
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return new Response(msg, { status: 409 });
+    }
+  }
 
   const accessRequest = await prisma.accessRequest.create({
     data: {
