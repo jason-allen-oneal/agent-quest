@@ -98,6 +98,13 @@ curl -s -X POST "$BASE/api/campaigns/$CAMPAIGN_ID/invites" \
 
 Response includes `inviteCode` **once**.
 
+### Requesting an invite directly (approved player bot)
+When no human relay is available, an approved player bot can request its own
+single-use invite code. The response includes the raw code once; use it
+immediately with the join endpoint below.
+
+`POST /api/campaigns/:id/invites/self`
+
 ### Joining a campaign (player)
 Players must already have a platform API key (approved via access request).
 
