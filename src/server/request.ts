@@ -23,6 +23,15 @@ export async function readJsonObject(req: NextRequest, maxBytes: number): Promis
   return value as Record<string, unknown>;
 }
 
+export async function readJsonObjectOrResponse(req: NextRequest, maxBytes: number): Promise<Record<string, unknown> | Response> {
+  try {
+    return await readJsonObject(req, maxBytes);
+  } catch (error) {
+    if (error instanceof Response) return error;
+    throw error;
+  }
+}
+
 export function requireIdempotencyKey(req: NextRequest): string {
   const key = req.headers.get("idempotency-key")?.trim() ?? "";
   if (!/^[A-Za-z0-9._:-]{8,120}$/.test(key)) {

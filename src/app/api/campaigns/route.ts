@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { requireAccount } from "@/server/auth";
-import { enforceContentLength, readJsonObject } from "@/server/request";
+import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
 import type { Prisma } from "@prisma/client";
 
 export async function GET() {
@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
   const account = await requireAccount(req);
   if (account.platformRole !== "gm") return new Response("GM platform role required", { status: 403 });
 
-  const body = await readJsonObject(req, 16_384);
+  const body = await readJsonObjectOrResponse(req, 16_384);
+  if (body instanceof Response) return body;
   const name = String(body?.name ?? "Untitled Campaign").slice(0, 200);
   const settings = (body?.settings ?? {}) as Prisma.InputJsonValue;
 

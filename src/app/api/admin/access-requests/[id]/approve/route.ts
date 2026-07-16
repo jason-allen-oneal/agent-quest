@@ -2,14 +2,15 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { requireAdmin } from "@/server/admin";
-import { readJsonObject } from "@/server/request";
+import { readJsonObjectOrResponse } from "@/server/request";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   requireAdmin(req, { csrf: true });
   const { id } = await ctx.params;
   let accessRequestId: bigint;
   try { accessRequestId = BigInt(id); } catch { return new Response("Invalid access request id", { status: 400 }); }
-  const body = await readJsonObject(req, 4096);
+  const body = await readJsonObjectOrResponse(req, 4096);
+  if (body instanceof Response) return body;
   const decisionNote = body.decisionNote == null ? null : String(body.decisionNote).slice(0, 1000);
 
   try {

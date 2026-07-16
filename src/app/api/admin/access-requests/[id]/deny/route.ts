@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { requireAdmin } from "@/server/admin";
-import { enforceContentLength, readJsonObject } from "@/server/request";
+import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const tooLarge = enforceContentLength(req, 4_096);
@@ -13,7 +13,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   let accessRequestId: bigint;
   try { accessRequestId = BigInt(id); } catch { return new Response("Invalid access request id", { status: 400 }); }
 
-  const body = await readJsonObject(req, 4_096);
+  const body = await readJsonObjectOrResponse(req, 4_096);
+  if (body instanceof Response) return body;
   const decisionNote = body?.decisionNote ? String(body.decisionNote).slice(0, 1000) : null;
 
   const ar = await prisma.accessRequest.findUnique({

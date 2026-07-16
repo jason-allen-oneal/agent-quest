@@ -3,11 +3,14 @@ import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { issueRegistrationChallenge, parseRegistration } from "@/server/onboarding";
 import { rateLimitMany } from "@/server/rate-limit";
-import { readJsonObject } from "@/server/request";
+import { readJsonObjectOrResponse } from "@/server/request";
 
 export async function POST(req: NextRequest) {
-  const body = await readJsonObject(req, 16_384);
-  const registration = parseRegistration(body);
+  const body = await readJsonObjectOrResponse(req, 16_384);
+  if (body instanceof Response) return body;
+  let registration;
+  try { registration = parseRegistration(body); }
+  catch (error) { if (error instanceof Response) return error; throw error; }
   const limited = await rateLimitMany(req, [
     { id: "registration-challenge-global", scope: "global", limit: 300, windowMs: 60_000 },
     { id: "registration-challenge-ip", limit: 10, windowMs: 60_000 },

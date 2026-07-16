@@ -5,7 +5,7 @@ import { json } from "@/server/http";
 import { sha256Hex } from "@/server/crypto";
 import { parseRegistration, verifyRegistrationChallenge } from "@/server/onboarding";
 import { rateLimitMany } from "@/server/rate-limit";
-import { readJsonObject } from "@/server/request";
+import { readJsonObjectOrResponse } from "@/server/request";
 
 const DEFAULT_AUTO_APPROVE = new Set(["player", "observer"]);
 function autoApproveRoles() {
@@ -14,8 +14,11 @@ function autoApproveRoles() {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await readJsonObject(req, 16_384);
-  const registration = parseRegistration(body);
+  const body = await readJsonObjectOrResponse(req, 16_384);
+  if (body instanceof Response) return body;
+  let registration;
+  try { registration = parseRegistration(body); }
+  catch (error) { if (error instanceof Response) return error; throw error; }
   const challengeToken = String(body.challengeToken ?? "");
   const challengeSignature = String(body.challengeSignature ?? "");
   if (!challengeToken || !challengeSignature || !verifyRegistrationChallenge(registration, challengeToken, challengeSignature)) {

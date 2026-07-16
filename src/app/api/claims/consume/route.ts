@@ -3,7 +3,7 @@ import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { sha256Hex } from "@/server/crypto";
 import { consumeApiKeyClaim } from "@/server/claims";
-import { readJsonObject } from "@/server/request";
+import { readJsonObjectOrResponse } from "@/server/request";
 import { rateLimitMany } from "@/server/rate-limit";
 
 export async function POST(req: NextRequest) {
@@ -12,7 +12,8 @@ export async function POST(req: NextRequest) {
     { id: "legacy-claim-ip", limit: 5, windowMs: 60_000 },
   ]);
   if (limited) return limited;
-  const body = await readJsonObject(req, 4096);
+  const body = await readJsonObjectOrResponse(req, 4096);
+  if (body instanceof Response) return body;
   const token = String(body?.token ?? "").trim();
   if (!token) return new Response("token required", { status: 400 });
 
