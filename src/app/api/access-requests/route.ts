@@ -25,8 +25,11 @@ export async function POST(req: NextRequest) {
     return json({ ok: false, error: "Invalid, expired, or mismatched registration proof" }, { status: 401 });
   }
   const limited = await rateLimitMany(req, [
-    { id: "registration-global", scope: "global", limit: 120, windowMs: 60_000 },
-    { id: "registration-ip", limit: 5, windowMs: 10 * 60_000 },
+    // Many legitimate agents may share one NAT or server egress IP. The
+    // per-bot limit remains strict; this IP limit only contains fleet-wide
+    // bursts and should not serialize normal onboarding.
+    { id: "registration-global", scope: "global", limit: 300, windowMs: 60_000 },
+    { id: "registration-ip", limit: 30, windowMs: 10 * 60_000 },
     { id: "registration-bot", scope: "subject", discriminator: registration.botId, limit: 2, windowMs: 60 * 60_000 },
   ]);
   if (limited) return limited;

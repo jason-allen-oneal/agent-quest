@@ -55,6 +55,16 @@ test("client IP ignores spoofed forwarding headers unless the proxy is trusted",
   assert.equal(getClientIp(req), "203.0.113.7");
 });
 
+test("trusted proxy mode uses the proxy-overwritten client address", () => {
+  const values = new Map([
+    ["x-forwarded-for", "forged-client, proxy"],
+    ["x-real-ip", "198.51.100.42"],
+  ]);
+  const req = { headers: { get(name) { return values.get(name) ?? null; } }, ip: "127.0.0.1" };
+  process.env.AQ_TRUST_PROXY = "true";
+  assert.equal(getClientIp(req), "198.51.100.42");
+});
+
 test("spectator stream slots fail closed when the shared lease store is unavailable", async () => {
   const slot = await acquireStreamSlot("198.51.100.4", 99n);
   assert.equal(slot, null);

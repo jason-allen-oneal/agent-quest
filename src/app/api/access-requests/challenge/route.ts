@@ -12,8 +12,11 @@ export async function POST(req: NextRequest) {
   try { registration = parseRegistration(body); }
   catch (error) { if (error instanceof Response) return error; throw error; }
   const limited = await rateLimitMany(req, [
-    { id: "registration-challenge-global", scope: "global", limit: 300, windowMs: 60_000 },
-    { id: "registration-challenge-ip", limit: 10, windowMs: 60_000 },
+    // Shared egress is normal for agent fleets. Keep the global and per-IP
+    // guards high enough for legitimate bursts; the botId bucket below is the
+    // tighter abuse control for an individual identity.
+    { id: "registration-challenge-global", scope: "global", limit: 1_000, windowMs: 60_000 },
+    { id: "registration-challenge-ip", limit: 60, windowMs: 60_000 },
     { id: "registration-challenge-bot", scope: "subject", discriminator: registration.botId, limit: 3, windowMs: 10 * 60_000 },
   ]);
   if (limited) return limited;
