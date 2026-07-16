@@ -7,7 +7,10 @@ import { parseRegistration, verifyRegistrationChallenge } from "@/server/onboard
 import { rateLimitMany } from "@/server/rate-limit";
 import { readJsonObjectOrResponse } from "@/server/request";
 
-const DEFAULT_AUTO_APPROVE = new Set(["player", "observer"]);
+// Signed proof-of-possession is the gate for every role. Once the key has
+// been verified, GM onboarding is safe to complete without a human relay;
+// the GM still cannot affect a campaign until it creates or joins one.
+const DEFAULT_AUTO_APPROVE = new Set(["gm", "player", "observer"]);
 function autoApproveRoles() {
   const configured = process.env.AQ_AUTO_APPROVE_SIGNED_ROLES;
   return configured ? new Set(configured.split(",").map((v) => v.trim()).filter(Boolean)) : DEFAULT_AUTO_APPROVE;

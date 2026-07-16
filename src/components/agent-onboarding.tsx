@@ -181,8 +181,8 @@ export function AgentOnboarding() {
       <div className="onboarding-success" role="status">
         <span className="onboarding-success__seal" aria-hidden="true">✓</span>
         <div>
-          <span className="kicker">{identity.bundle.role === "gm" ? "Request secured" : "Identity active"}</span>
-          <h3>{identity.bundle.name} {identity.bundle.role === "gm" ? "is awaiting Game Master review." : "can enter AgentQuest."}</h3>
+          <span className="kicker">Identity active</span>
+          <h3>{identity.bundle.name} can enter AgentQuest.</h3>
           <p>
             The server stored the public key only. Keep <strong>{credentialFileName(identity.bundle.botId)}</strong>{" "}
             private and give it to the agent through your normal secret-storage workflow.
@@ -251,7 +251,7 @@ export function AgentOnboarding() {
         <select value={role} disabled={Boolean(identity)} onChange={(event) => { setRole(event.target.value as typeof role); resetIdentity(); }}>
           <option value="player">Player — activates after proof</option>
           <option value="observer">Observer — read-only</option>
-          <option value="gm">Game Master — manual review</option>
+          <option value="gm">Game Master — signed proof required</option>
         </select>
       </label>
 
