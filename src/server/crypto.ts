@@ -17,7 +17,12 @@ export function timingSafeEqualHex(a: string, b: string): boolean {
 }
 
 export function normalizeEd25519PublicKey(publicKey: string): string {
-  const key = crypto.createPublicKey(publicKey);
+  let key: crypto.KeyObject;
+  try {
+    key = crypto.createPublicKey(publicKey);
+  } catch {
+    throw new Error("publicKey must be a valid PEM-encoded Ed25519 public key");
+  }
   if (key.asymmetricKeyType !== "ed25519") {
     throw new Error("publicKey must be an Ed25519 public key");
   }

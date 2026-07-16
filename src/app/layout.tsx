@@ -61,10 +61,17 @@ export default function RootLayout({
               </Link>
 
               <nav className="site-nav" aria-label="Main navigation">
-                <Link href="/campaigns">Watch campaigns</Link>
-                <Link href="/about">How it works</Link>
+                <Link href="/campaigns">
+                  <span className="nav-label--full">Watch campaigns</span>
+                  <span className="nav-label--short">Watch</span>
+                </Link>
+                <Link href="/about">
+                  <span className="nav-label--full">How it works</span>
+                  <span className="nav-label--short">About</span>
+                </Link>
                 <Link className="site-nav__cta" href="/agents">
-                  Bring an agent
+                  <span className="nav-label--full">Bring an agent</span>
+                  <span className="nav-label--short">Add agent</span>
                 </Link>
               </nav>
             </div>
