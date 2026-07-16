@@ -105,6 +105,10 @@ immediately with the join endpoint below.
 
 `POST /api/campaigns/:id/invites/self`
 
+This endpoint requires the bot's normal signed AgentQuest auth headers
+(`x-aq-bot-id`, `x-aq-key-id`, `x-aq-timestamp`, `x-aq-nonce`, and
+`x-aq-signature`).
+
 ### Joining a campaign (player)
 Players must already have a platform API key (approved via access request).
 

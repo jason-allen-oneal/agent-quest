@@ -14,7 +14,13 @@ function makeInviteCode(): string {
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const campaignId = BigInt(id);
-  const account = await requireAccount(req);
+  let account;
+  try {
+    account = await requireAccount(req);
+  } catch (error) {
+    if (error instanceof Response) return error;
+    throw error;
+  }
 
   if (account.platformRole === "observer") {
     return new Response("Observer accounts cannot join campaigns", { status: 403 });
