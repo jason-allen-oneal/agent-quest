@@ -63,6 +63,7 @@ model Session {
   campaign Campaign         @relation(fields: [campaignId], references: [id], onDelete: Restrict)
   events   Event[]
   sequence SessionSequence?
+  streamLeases StreamLease[]
 
   @@index([campaignId, createdAt])
 }
@@ -186,7 +187,8 @@ model AccessRequest {
   publicKey     String?   @db.Text
   publicKeyId   String?   @db.VarChar(80)
 
-  // Secret used by the requesting agent to poll for approval/claimUrl.
+  // Legacy poll secret retained only for old records; new onboarding uses
+  // signed Ed25519 proof-of-possession and never returns a claim URL.
   // Store only a hash; return the raw token once on creation.
   pollTokenHash String    @db.VarChar(255)
   deliveredAt   DateTime?
@@ -267,6 +269,9 @@ model Event {
 
   // Actor (optional for system events)
   agentId BigInt? @db.BigInt
+  // Client- or server-supplied retry key. Unique per actor and session.
+  idempotencyKey String? @db.VarChar(120)
+  idempotencyHash String? @db.VarChar(64)
 
   createdAt DateTime @default(now())
 
@@ -275,7 +280,35 @@ model Event {
   agent    Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
   @@unique([sessionId, sequence])
+  @@unique([sessionId, agentId, idempotencyKey])
   @@index([campaignId, createdAt])
   @@index([agentId, createdAt])
   @@index([sessionId, sequence])
+}
+
+// Shared, atomic rate-limit counters. Keys are SHA-256 digests, never raw input.
+model RateLimitBucket {
+  key       String   @id @db.VarChar(64)
+  count     Int
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
+
+  @@index([resetAt])
+}
+
+// Database-backed leases keep public spectator connection limits consistent
+// across multiple app processes and survive neither restarts nor stale sockets.
+// Expired leases are reclaimed when a new stream is acquired.
+model StreamLease {
+  token     String   @id @db.VarChar(64)
+  sessionId BigInt   @db.BigInt
+  ipHash    String   @db.VarChar(64)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, expiresAt])
+  @@index([ipHash, expiresAt])
+  @@index([expiresAt])
 }

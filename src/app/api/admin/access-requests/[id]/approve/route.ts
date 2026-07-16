@@ -1,111 +1,40 @@
-import crypto from "node:crypto";
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { requireAdmin } from "@/server/admin";
-import { sha256Hex } from "@/server/crypto";
-
-function makeClaimToken(): string {
-  return crypto.randomBytes(24).toString("base64url");
-}
-
-const CLAIM_TTL_HOURS = Number(process.env.AQ_CLAIM_TTL_HOURS ?? 24);
+import { readJsonObjectOrResponse } from "@/server/request";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   requireAdmin(req, { csrf: true });
-
   const { id } = await ctx.params;
-  const accessRequestId = BigInt(id);
+  let accessRequestId: bigint;
+  try { accessRequestId = BigInt(id); } catch { return new Response("Invalid access request id", { status: 400 }); }
+  const body = await readJsonObjectOrResponse(req, 4096);
+  if (body instanceof Response) return body;
+  const decisionNote = body.decisionNote == null ? null : String(body.decisionNote).slice(0, 1000);
 
-  const body = await req.json().catch(() => ({}));
-  const decisionNote = body?.decisionNote ? String(body.decisionNote).slice(0, 1000) : null;
-
-  const ar = await prisma.accessRequest.findUnique({
-    where: { id: accessRequestId },
-    select: {
-      id: true,
-      status: true,
-      requestedRole: true,
-      name: true,
-      botId: true,
-      publicKey: true,
-      publicKeyId: true,
-    },
-  });
-  if (!ar) return new Response("Access request not found", { status: 404 });
-  if (ar.status !== "pending") return new Response("Access request not pending", { status: 409 });
-
-  const result = await prisma.$transaction(async (tx) => {
-    // Create or update the platform Account.
-    const account = await tx.account.upsert({
-      where: { botId: ar.botId },
-      create: {
-        botId: ar.botId,
-        name: ar.name,
-        platformRole: ar.requestedRole,
-      },
-      update: {
-        name: ar.name,
-        platformRole: ar.requestedRole,
-      },
-      select: { id: true, botId: true, name: true, platformRole: true },
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const ar = await tx.accessRequest.findUnique({ where: { id: accessRequestId } });
+      if (!ar) throw new Response("Access request not found", { status: 404 });
+      if (ar.status !== "pending") throw new Response("Access request not pending", { status: 409 });
+      if (!ar.publicKey || !ar.publicKeyId) throw new Response("Unsigned legacy requests cannot be approved", { status: 409 });
+      if (await tx.account.findUnique({ where: { botId: ar.botId }, select: { id: true } })) {
+        throw new Response("botId already belongs to an account; use an authenticated account-management workflow", { status: 409 });
+      }
+      if (await tx.accountPublicKey.findUnique({ where: { keyId: ar.publicKeyId }, select: { id: true } })) {
+        throw new Response("public key already belongs to an account", { status: 409 });
+      }
+      const claimed = await tx.accessRequest.updateMany({ where: { id: ar.id, status: "pending" }, data: { status: "approved", decidedAt: new Date(), decisionNote } });
+      if (claimed.count !== 1) throw new Response("Access request was already decided", { status: 409 });
+      const account = await tx.account.create({ data: { botId: ar.botId, name: ar.name, platformRole: ar.requestedRole }, select: { id: true, botId: true, name: true, platformRole: true } });
+      await tx.accountPublicKey.create({ data: { accountId: account.id, keyId: ar.publicKeyId, publicKey: ar.publicKey } });
+      await tx.accessRequest.update({ where: { id: ar.id }, data: { accountId: account.id } });
+      return { account, keyId: ar.publicKeyId };
     });
-
-    // Mark request approved (bind to account)
-    await tx.accessRequest.update({
-      where: { id: ar.id },
-      data: { status: "approved", accountId: account.id, decidedAt: new Date(), decisionNote },
-      select: { id: true },
-    });
-
-    if (ar.publicKey && ar.publicKeyId) {
-      await tx.accountPublicKey.upsert({
-        where: { keyId: ar.publicKeyId },
-        create: {
-          accountId: account.id,
-          keyId: ar.publicKeyId,
-          publicKey: ar.publicKey,
-        },
-        update: {
-          accountId: account.id,
-          publicKey: ar.publicKey,
-          revokedAt: null,
-        },
-        select: { id: true },
-      });
-
-      return { account, token: null, expiresAt: null, keyId: ar.publicKeyId };
-    }
-
-    // Create claim token for optional one-time claim page.
-    const token = makeClaimToken();
-    const tokenHash = sha256Hex(token);
-    const expiresAt = new Date(Date.now() + CLAIM_TTL_HOURS * 60 * 60 * 1000);
-
-    await tx.apiKeyClaim.create({
-      data: {
-        accessRequestId: ar.id,
-        accountId: account.id,
-        tokenHash,
-        expiresAt,
-      },
-      select: { id: true },
-    });
-
-    return { account, token, expiresAt, keyId: null };
-  });
-
-  const origin = new URL(req.url).origin;
-  const claimUrl = result.token ? `${origin}/claim/${result.token}` : null;
-
-  return json(
-    {
-      ok: true,
-      account: result.account,
-      claimUrl,
-      expiresAt: result.expiresAt,
-      auth: result.keyId ? { type: "signed-ed25519", keyId: result.keyId } : { type: "bearer-claim" },
-    },
-    { status: 201 }
-  );
+    return json({ ok: true, account: result.account, auth: { type: "signed-ed25519", keyId: result.keyId } }, { status: 201 });
+  } catch (error) {
+    if (error instanceof Response) return error;
+    return json({ ok: false, error: "botId or public key collision" }, { status: 409 });
+  }
 }

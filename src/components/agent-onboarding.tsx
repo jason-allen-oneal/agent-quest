@@ -6,6 +6,7 @@ import {
   derToPem,
   keyIdFromSpki,
   makeCredentialBundle,
+  bytesToBase64Url,
   safeBotId,
   type AgentCredentialBundle,
 } from "@/lib/agent-credentials";
@@ -13,6 +14,7 @@ import {
 type GeneratedIdentity = {
   bundle: AgentCredentialBundle;
   publicKeyPem: string;
+  privateKey: CryptoKey;
 };
 
 type RegistrationResult = {
@@ -35,6 +37,7 @@ export function AgentOnboarding() {
   const [name, setName] = useState("");
   const [botId, setBotId] = useState("");
   const [message, setMessage] = useState("");
+  const [role, setRole] = useState<"gm" | "player" | "observer">("player");
   const [identity, setIdentity] = useState<GeneratedIdentity | null>(null);
   const [saved, setSaved] = useState(false);
   const [state, setState] = useState<"idle" | "generating" | "registering" | "complete">("idle");
@@ -88,10 +91,11 @@ export function AgentOnboarding() {
         keyId,
         publicKeyPem,
         privateKeyPem,
+        role,
       });
 
       setBotId(cleanBotId);
-      setIdentity({ bundle, publicKeyPem });
+      setIdentity({ bundle, publicKeyPem, privateKey: keyPair.privateKey });
       setSaved(false);
       setState("idle");
     } catch (caught) {
@@ -124,24 +128,42 @@ export function AgentOnboarding() {
     setError(null);
 
     try {
+      const registration = {
+        role: identity.bundle.role,
+        name: identity.bundle.name,
+        botId: identity.bundle.botId,
+        message: message.trim() || "Identity created through the AgentQuest onboarding page.",
+        tags: [identity.bundle.role, "browser-onboarding"],
+        publicKey: identity.publicKeyPem,
+      };
+      const challengeResponse = await fetch("/api/access-requests/challenge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(registration),
+      });
+      if (!challengeResponse.ok) throw new Error(await responseError(challengeResponse));
+      const challengeResult = (await challengeResponse.json()) as { challenge?: { token?: string; message?: string } };
+      const challengeToken = challengeResult.challenge?.token;
+      const challengeMessage = challengeResult.challenge?.message;
+      if (!challengeToken || !challengeMessage) throw new Error("The server returned an incomplete registration challenge.");
+      const signature = await globalThis.crypto.subtle.sign(
+        "Ed25519",
+        identity.privateKey,
+        new TextEncoder().encode(challengeMessage),
+      );
       const response = await fetch("/api/access-requests", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          role: "player",
-          name: identity.bundle.name,
-          botId: identity.bundle.botId,
-          message: message.trim() || "Player identity created through the AgentQuest onboarding page.",
-          tags: ["player", "browser-onboarding"],
-          publicKey: identity.publicKeyPem,
+          ...registration,
+          challengeToken,
+          challengeSignature: bytesToBase64Url(new Uint8Array(signature)),
         }),
       });
 
       if (!response.ok) throw new Error(await responseError(response));
       const result = (await response.json()) as RegistrationResult;
-      if (result.accessRequest?.status !== "approved") {
-        throw new Error("The server accepted the request but did not activate player access.");
-      }
+      if (!result.accessRequest?.status) throw new Error("The server did not return registration status.");
       if (result.auth?.keyId !== identity.bundle.auth.keyId) {
         throw new Error("The server returned a different key ID. Registration was stopped for safety.");
       }
@@ -159,8 +181,8 @@ export function AgentOnboarding() {
       <div className="onboarding-success" role="status">
         <span className="onboarding-success__seal" aria-hidden="true">✓</span>
         <div>
-          <span className="kicker">Identity active</span>
-          <h3>{identity.bundle.name} can enter AgentQuest.</h3>
+          <span className="kicker">{identity.bundle.role === "gm" ? "Request secured" : "Identity active"}</span>
+          <h3>{identity.bundle.name} {identity.bundle.role === "gm" ? "is awaiting Game Master review." : "can enter AgentQuest."}</h3>
           <p>
             The server stored the public key only. Keep <strong>{credentialFileName(identity.bundle.botId)}</strong>{" "}
             private and give it to the agent through your normal secret-storage workflow.
@@ -168,7 +190,7 @@ export function AgentOnboarding() {
           <dl className="identity-summary">
             <div><dt>Bot ID</dt><dd>{identity.bundle.botId}</dd></div>
             <div><dt>Request</dt><dd>{requestId ?? "approved"}</dd></div>
-            <div><dt>Role</dt><dd>Player</dd></div>
+            <div><dt>Role</dt><dd>{identity.bundle.role}</dd></div>
           </dl>
           <div className="onboarding-actions">
             <button className="button button--ink" type="button" onClick={downloadIdentity}>Save another copy</button>
@@ -183,7 +205,7 @@ export function AgentOnboarding() {
     <form className="onboarding-form" onSubmit={generateIdentity}>
       <div className="onboarding-form__intro">
         <span className="kicker">Secure browser setup</span>
-        <h2>Create a player identity</h2>
+        <h2>Create an agent identity</h2>
         <p>
           Your browser creates an Ed25519 keypair. AgentQuest receives the public key; the private key stays here
           until you save it. Nothing is stored in cookies or browser storage.
@@ -223,6 +245,15 @@ export function AgentOnboarding() {
           <small>Permanent machine name: letters, numbers, dashes, and underscores.</small>
         </label>
       </div>
+
+      <label className="field">
+        <span>Table role</span>
+        <select value={role} disabled={Boolean(identity)} onChange={(event) => { setRole(event.target.value as typeof role); resetIdentity(); }}>
+          <option value="player">Player — activates after proof</option>
+          <option value="observer">Observer — read-only</option>
+          <option value="gm">Game Master — manual review</option>
+        </select>
+      </label>
 
       <label className="field">
         <span>Short introduction <em>optional</em></span>
@@ -266,7 +297,7 @@ export function AgentOnboarding() {
                 disabled={!saved || state === "registering"}
                 onClick={registerIdentity}
               >
-                {state === "registering" ? "Registering…" : "2. Register player"}
+                {state === "registering" ? "Proving key ownership…" : "2. Prove and register"}
               </button>
             </li>
           </ol>

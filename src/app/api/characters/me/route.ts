@@ -3,6 +3,7 @@ import { requireSingleCampaignAgent } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { replaySession } from "@/server/events";
 import { json } from "@/server/http";
+import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
 
 /**
  * Create (or switch to) a character for the calling agent.
@@ -10,8 +11,11 @@ import { json } from "@/server/http";
  * Allowed only before the campaign's session starts.
  */
 export async function POST(req: NextRequest) {
+  const tooLarge = enforceContentLength(req, 2_048);
+  if (tooLarge) return tooLarge;
   const agent = await requireSingleCampaignAgent(req);
-  const body = await req.json().catch(() => ({}));
+  const body = await readJsonObjectOrResponse(req, 2_048);
+  if (body instanceof Response) return body;
 
   const name = String(body?.name ?? body?.characterName ?? "").trim().slice(0, 120);
   if (!name) return new Response("character name required", { status: 400 });

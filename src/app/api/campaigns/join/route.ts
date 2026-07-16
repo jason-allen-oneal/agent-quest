@@ -4,13 +4,18 @@ import { json } from "@/server/http";
 import { sha256Hex } from "@/server/crypto";
 import { requireAccount } from "@/server/auth";
 import { rateLimit } from "@/server/rate-limit";
+import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
 
 export async function POST(req: NextRequest) {
+  const tooLarge = enforceContentLength(req, 4_096);
+  if (tooLarge) return tooLarge;
   const account = await requireAccount(req);
-  const limited = rateLimit(req, { id: "campaigns-join", limit: 30, windowMs: 60_000, key: String(account.id) });
+  if (account.platformRole === "observer") return new Response("Observer accounts are read-only", { status: 403 });
+  const limited = await rateLimit(req, { id: "campaigns-join", limit: 10, windowMs: 60_000, discriminator: String(account.id) });
   if (limited) return limited;
 
-  const body = await req.json().catch(() => ({}));
+  const body = await readJsonObjectOrResponse(req, 4_096);
+  if (body instanceof Response) return body;
 
   const inviteCode = String(body?.inviteCode ?? "").trim();
   if (!inviteCode) return new Response("inviteCode required", { status: 400 });

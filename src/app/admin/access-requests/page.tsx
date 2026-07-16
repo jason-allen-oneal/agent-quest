@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type AccessRequest = {
   id: string;
@@ -12,6 +12,7 @@ type AccessRequest = {
   publicKeyId: string | null;
   status: "pending" | "approved" | "denied";
   createdAt: string;
+  botIdTaken: boolean;
 };
 
 export default function AdminAccessRequestsPage() {
@@ -22,11 +23,11 @@ export default function AdminAccessRequestsPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("AQ_ADMIN_KEY") ?? "";
-    setAdminKey(saved);
+    const csrf = document.cookie.split("; ").find((item) => item.startsWith("aq_admin_csrf="))?.split("=")[1];
+    if (csrf) setCsrfToken(decodeURIComponent(csrf));
   }, []);
 
-  const canLoad = useMemo(() => adminKey.trim().length > 0, [adminKey]);
+  const canLoad = csrfToken.length > 0 || adminKey.trim().length > 0;
 
   async function ensureLogin() {
     if (csrfToken) return csrfToken;
@@ -41,6 +42,7 @@ export default function AdminAccessRequestsPage() {
     const token = String(data?.csrfToken ?? "");
     if (!token) throw new Error("Missing csrfToken from /api/admin/login");
     setCsrfToken(token);
+    setAdminKey("");
     return token;
   }
 
@@ -79,11 +81,7 @@ export default function AdminAccessRequestsPage() {
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      if (data?.auth?.type === "signed-ed25519") {
-        alert(`Approved. Signed auth enabled.\nKey ID:\n${data.auth.keyId}`);
-      } else {
-        alert(`Approved. Claim URL:\n${data.claimUrl}`);
-      }
+      alert(`Approved. Signed auth enabled.\nKey ID:\n${data.auth.keyId}`);
       await load();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -121,7 +119,7 @@ export default function AdminAccessRequestsPage() {
     <main style={{ padding: 24, maxWidth: 960 }}>
       <h1>Admin — Access Requests</h1>
       <p style={{ opacity: 0.8 }}>
-        Paste <code>AQ_ADMIN_KEY</code> to start an admin session. (Key stored in localStorage; session uses HttpOnly cookies.)
+        Paste <code>AQ_ADMIN_KEY</code> once to start an HttpOnly admin session. It is erased from page state immediately and never stored in browser storage.
       </p>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -129,10 +127,7 @@ export default function AdminAccessRequestsPage() {
           type="password"
           placeholder="AQ_ADMIN_KEY"
           value={adminKey}
-          onChange={(e) => {
-            setAdminKey(e.target.value);
-            localStorage.setItem("AQ_ADMIN_KEY", e.target.value);
-          }}
+          onChange={(e) => setAdminKey(e.target.value)}
           style={{ width: 420, padding: 8 }}
         />
         <button disabled={!canLoad || busy} onClick={load}>
@@ -163,15 +158,12 @@ export default function AdminAccessRequestsPage() {
             <div style={{ opacity: 0.85, marginTop: 6 }}>
               botId: <code>{r.botId}</code>
             </div>
+            {r.botIdTaken ? <div role="alert" style={{ color: "crimson", fontWeight: 700, marginTop: 6 }}>Collision: this bot ID already belongs to an account. Approval is blocked server-side.</div> : null}
             {r.publicKeyId ? (
               <div style={{ opacity: 0.85, marginTop: 6 }}>
                 auth: <code>signed-ed25519</code> keyId: <code>{r.publicKeyId}</code>
               </div>
-            ) : (
-              <div style={{ opacity: 0.85, marginTop: 6 }}>
-                auth: <code>legacy bearer claim</code>
-              </div>
-            )}
+            ) : <div role="alert" style={{ color: "crimson", marginTop: 6 }}>Unsigned legacy request — approval disabled.</div>}
             {Array.isArray(r.tags) && r.tags.length ? (
               <div style={{ opacity: 0.85, marginTop: 6 }}>
                 tags: <code>{JSON.stringify(r.tags)}</code>
@@ -179,7 +171,7 @@ export default function AdminAccessRequestsPage() {
             ) : null}
             {r.message ? <div style={{ marginTop: 8 }}>{r.message}</div> : null}
             <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-              <button disabled={busy} onClick={() => approve(r.id)}>
+              <button disabled={busy || r.botIdTaken || !r.publicKeyId} onClick={() => approve(r.id)}>
                 Approve
               </button>
               <button disabled={busy} onClick={() => deny(r.id)}>

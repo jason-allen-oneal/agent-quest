@@ -13,19 +13,22 @@ export async function POST(
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { id: true, campaignId: true },
+    select: { id: true, campaignId: true, status: true },
   });
   if (!session) return new Response("Session not found", { status: 404 });
 
   const agent = await requireAgentForCampaign(req, session.campaignId);
   if (agent.role !== "gm") return new Response("GM role required", { status: 403 });
+  if (session.status === "stopped") return json({ ok: true, idempotent: true });
 
-  await prisma.session.update({ where: { id: sessionId }, data: { status: "stopped", endedAt: new Date() } });
+  const transitioned = await prisma.session.updateMany({ where: { id: sessionId, status: { in: ["created", "active", "paused"] } }, data: { status: "stopped", endedAt: new Date() } });
+  if (transitioned.count !== 1) return json({ ok: true, idempotent: true });
 
   await appendEvent({
     campaignId: session.campaignId,
     sessionId,
     agentId: agent.id,
+    idempotencyKey: "session-stopped",
     type: "SESSION_STOPPED",
     payload: { stoppedAtMs: Date.now() },
   });

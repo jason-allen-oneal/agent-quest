@@ -1,77 +1,42 @@
+import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
+import { getClientIp } from "@/server/rate-limit";
+import { acquireStreamSlot, fetchEvents, sessionHub, STREAM_MAX_DURATION_MS, type StreamEvent } from "@/server/session-stream";
 
-function sse(data: string) {
-  return `data: ${data}\n\n`;
-}
+const encoder = new TextEncoder();
+const encodeEvent = (event: StreamEvent) => encoder.encode(`data: ${JSON.stringify(event, (_key, value) => typeof value === "bigint" ? value.toString() : value)}\n\n`);
 
-export async function GET(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const sessionId = BigInt(id);
+  let sessionId: bigint;
+  try { sessionId = BigInt(id); } catch { return new Response("Invalid session id", { status: 400 }); }
+  if (!await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true } })) return new Response("Session not found", { status: 404 });
+  const cursorRaw = new URL(req.url).searchParams.get("cursor") ?? "0";
+  let cursor: bigint;
+  try { cursor = BigInt(cursorRaw); if (cursor < 0n) throw new Error(); } catch { return new Response("Invalid cursor", { status: 400 }); }
+  const release = await acquireStreamSlot(getClientIp(req), sessionId);
+  if (!release) return new Response("Too many live streams", { status: 429, headers: { "retry-after": "30" } });
 
-  const url = new URL(req.url);
-  const cursorRaw = url.searchParams.get("cursor");
-  let cursor = cursorRaw ? BigInt(cursorRaw) : 0n;
-
-  const encoder = new TextEncoder();
-
+  let closeStream = () => release();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(encoder.encode(`event: ready\n${sse(JSON.stringify({ ok: true }))}`));
-
-      // Simple polling stream (MVP). Replace with push/pubsub later.
-      while (true) {
-        const events = await prisma.event.findMany({
-          where: { sessionId, sequence: { gt: cursor } },
-          orderBy: [{ sequence: "asc" }],
-          take: 200,
-          select: {
-            sequence: true,
-            type: true,
-            payload: true,
-            agentId: true,
-            createdAt: true,
-            agent: {
-              select: {
-                id: true,
-                name: true,
-                role: true,
-                character: { select: { name: true } },
-              },
-            },
-          },
+      let closed = false;
+      let unsubscribe = () => {};
+      const close = () => { if (closed) return; closed = true; unsubscribe(); release(); try { controller.close(); } catch {} };
+      closeStream = close;
+      req.signal.addEventListener("abort", close, { once: true });
+      const timeout = setTimeout(close, STREAM_MAX_DURATION_MS);
+      req.signal.addEventListener("abort", () => clearTimeout(timeout), { once: true });
+      try {
+        controller.enqueue(encoder.encode(`event: ready\ndata: {"ok":true}\n\n`));
+        const initial = await fetchEvents(sessionId, cursor);
+        for (const event of initial) { cursor = event.sequence; controller.enqueue(encodeEvent(event)); }
+        unsubscribe = sessionHub(sessionId).subscribe((event) => {
+          if (!closed && event.sequence > cursor) { cursor = event.sequence; try { controller.enqueue(encodeEvent(event)); } catch { close(); } }
         });
-
-        for (const e of events) {
-          cursor = e.sequence;
-          controller.enqueue(
-            encoder.encode(
-              sse(
-                JSON.stringify(e, (_k, v) =>
-                  typeof v === "bigint" ? v.toString() : v
-                )
-              )
-            )
-          );
-        }
-
-        // Client disconnected?
-        if (req.signal.aborted) break;
-
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-
-      controller.close();
+      } catch { close(); }
     },
+    cancel() { closeStream(); },
   });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+  return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-store, no-transform", connection: "keep-alive", "x-accel-buffering": "no" } });
 }
