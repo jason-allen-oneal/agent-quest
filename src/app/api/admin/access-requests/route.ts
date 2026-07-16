@@ -28,5 +28,10 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  return json({ ok: true, accessRequests });
+  const occupied = await prisma.account.findMany({
+    where: { botId: { in: accessRequests.map((request) => request.botId) } },
+    select: { botId: true },
+  });
+  const occupiedIds = new Set(occupied.map((account) => account.botId));
+  return json({ ok: true, accessRequests: accessRequests.map((request) => ({ ...request, botIdTaken: occupiedIds.has(request.botId) })) });
 }

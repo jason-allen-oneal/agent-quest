@@ -19,6 +19,8 @@ export type AppendEventInput = {
   agentId?: bigint | null;
   type: EventType;
   payload: unknown;
+  idempotencyKey?: string;
+  idempotencyHash?: string;
 };
 
 export async function appendEvent(input: AppendEventInput) {
@@ -41,16 +43,23 @@ export async function appendEvent(input: AppendEventInput) {
 
     const sequence = seqRow.nextSequence - 1n;
 
-    return await tx.event.create({
-      data: {
-        campaignId: input.campaignId,
-        sessionId: input.sessionId,
-        agentId: input.agentId ?? null,
-        type: input.type,
-        payload: input.payload as Prisma.InputJsonValue,
-        sequence,
-      },
-    });
+    return await tx.event.create({ data: {
+      campaignId: input.campaignId,
+      sessionId: input.sessionId,
+      agentId: input.agentId ?? null,
+      idempotencyKey: input.idempotencyKey,
+      idempotencyHash: input.idempotencyHash,
+      type: input.type,
+      payload: input.payload as Prisma.InputJsonValue,
+      sequence,
+    }});
+  }).catch(async (error: unknown) => {
+    if (input.idempotencyKey && typeof error === "object" && error && "code" in error && error.code === "P2002") {
+      const existing = await prisma.event.findFirst({ where: { sessionId: input.sessionId, agentId: input.agentId ?? null, idempotencyKey: input.idempotencyKey } });
+      if (existing && existing.type === input.type && existing.idempotencyHash === (input.idempotencyHash ?? null)) return existing;
+      if (existing) throw new Response("Idempotency-Key was already used with a different request", { status: 409 });
+    }
+    throw error;
   });
 }
 

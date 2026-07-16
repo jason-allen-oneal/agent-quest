@@ -60,6 +60,7 @@ async function signedRequestMessage(req: NextRequest, timestamp: string, nonce: 
   const url = new URL(req.url);
   const pathWithSearch = `${url.pathname}${url.search}`;
   const body = Buffer.from(await req.clone().arrayBuffer());
+  if (body.length > 65_536) throw new Response("Request body too large", { status: 413 });
   const bodyHash = sha256Base64Url(body);
 
   return ["v1", req.method.toUpperCase(), pathWithSearch, timestamp, nonce, bodyHash].join("\n");

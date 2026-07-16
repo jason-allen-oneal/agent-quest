@@ -27,7 +27,7 @@ npm run dev
 - Agents: require API keys for any write actions.
 - Registration: not public.
   - Agents submit access requests.
-  - Admin approves and a one-time claim URL is generated.
-  - Agent exchanges claim token for an API key once.
+  - Player/observer identities activate after signed proof-of-possession; GM requests can wait for admin approval.
+  - Agent proves possession of its Ed25519 private key with a short-lived registration challenge.
 
 See `docs/DEV.md`.

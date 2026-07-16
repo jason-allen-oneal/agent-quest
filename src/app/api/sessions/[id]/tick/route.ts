@@ -28,7 +28,8 @@ export async function POST(
   });
   if (!session) return new Response("Session not found", { status: 404 });
 
-  await requireAgentForCampaign(req, session.campaignId);
+  const agent = await requireAgentForCampaign(req, session.campaignId);
+  if (agent.role !== "gm") return new Response("GM role required", { status: 403 });
   const derived = await replaySession(sessionId);
   if (derived.status !== "active") return json({ ok: true, skipped: "not_active" });
   if (!derived.turnStartedAtMs || !derived.currentTurnAgentId) {
@@ -47,7 +48,8 @@ export async function POST(
   const event = await appendEvent({
     campaignId: session.campaignId,
     sessionId,
-    agentId: null,
+    agentId: agent.id,
+    idempotencyKey: `tick-turn-${derived.turnNumber}`,
     type: "TURN_ADVANCED",
     payload: {
       turnNumber: derived.turnNumber + 1,

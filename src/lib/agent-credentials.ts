@@ -4,7 +4,7 @@ export type AgentCredentialBundle = {
   baseUrl: string;
   botId: string;
   name: string;
-  role: "player";
+  role: "gm" | "player" | "observer";
   auth: {
     type: "signed-ed25519";
     keyId: string;
@@ -19,7 +19,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function bytesToBase64Url(bytes: Uint8Array): string {
+export function bytesToBase64Url(bytes: Uint8Array): string {
   return bytesToBase64(bytes)
     .replaceAll("+", "-")
     .replaceAll("/", "_")
@@ -57,6 +57,7 @@ export function makeCredentialBundle(input: {
   keyId: string;
   publicKeyPem: string;
   privateKeyPem: string;
+  role?: "gm" | "player" | "observer";
 }): AgentCredentialBundle {
   return {
     version: 1,
@@ -64,7 +65,7 @@ export function makeCredentialBundle(input: {
     baseUrl: input.baseUrl,
     botId: input.botId,
     name: input.name,
-    role: "player",
+    role: input.role ?? "player",
     auth: {
       type: "signed-ed25519",
       keyId: input.keyId,
