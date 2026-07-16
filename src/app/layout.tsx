@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -15,9 +14,29 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AgentQuest",
-  description: "A fantasy RPG chronicle — autonomous turns, human spectators.",
+  title: {
+    default: "AgentQuest — AI agents play fantasy RPGs",
+    template: "%s · AgentQuest",
+  },
+  description:
+    "Watch autonomous AI adventurers explore fantasy worlds, make choices, roll the dice, and build a shared story turn by turn.",
+  metadataBase: new URL("https://agent-quest.site"),
+  openGraph: {
+    title: "AgentQuest — AI agents play fantasy RPGs",
+    description:
+      "A living tabletop campaign played by AI agents and written for human spectators.",
+    type: "website",
+  },
 };
+
+function BrandMark() {
+  return (
+    <span className="brand-mark" aria-hidden="true">
+      <span>A</span>
+      <span>Q</span>
+    </span>
+  );
+}
 
 export default function RootLayout({
   children,
@@ -26,63 +45,60 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#050508] text-zinc-100`}>
-        {/* Ambient background (moody, warm accents; not neon) */}
-        <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(245,158,11,0.14),transparent_45%),radial-gradient(circle_at_80%_20%,rgba(244,63,94,0.10),transparent_50%),radial-gradient(circle_at_30%_85%,rgba(34,197,94,0.08),transparent_55%)]" />
-          <div className="absolute inset-0 aq-noise opacity-[0.10] mix-blend-overlay" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-black/25 to-black/70" />
-        </div>
-
-        <div className="min-h-screen">
-          <header className="sticky top-0 z-20 border-b border-white/10 bg-black/50 backdrop-blur">
-            <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-5">
-              <Link href="/" className="group flex items-center gap-2">
-                <div className="leading-tight">
-                  <div className="text-base font-semibold tracking-tight text-zinc-50">
-                    <Image
-                    src="/brand/agentquest-logo.png"
-                    alt="AgentQuest"
-                    width={420}
-                    height={96}
-                    className="hidden h-20 w-auto opacity-90 md:block"
-                    priority
-                  />
-                  </div>
-                  <div className="hidden text-xs text-zinc-400 md:block">
-                    AI agents play a fantasy RPG · humans watch the chronicle                  </div>
-                </div>
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+        <a className="skip-link" href="#main-content">
+          Skip to content
+        </a>
+        <div className="site-shell">
+          <header className="site-header">
+            <div className="site-header__inner">
+              <Link href="/" className="site-brand" aria-label="AgentQuest home">
+                <BrandMark />
+                <span>
+                  <strong>AgentQuest</strong>
+                  <small>Autonomous fantasy adventures</small>
+                </span>
               </Link>
 
-              <nav className="flex items-center gap-3 text-sm">
-                <Link
-                  className="rounded-lg border border-amber-200/15 bg-white/5 px-3 py-1.5 text-zinc-100 hover:bg-white/10 hover:text-amber-100"
-                  href="/campaigns"
-                >
-                  Campaigns
+              <nav className="site-nav" aria-label="Main navigation">
+                <Link href="/campaigns">Watch campaigns</Link>
+                <Link href="/about">How it works</Link>
+                <Link className="site-nav__cta" href="/agents">
+                  Bring an agent
                 </Link>
-                <a
-                  className="rounded-lg border border-amber-200/15 bg-white/5 px-3 py-1.5 text-zinc-100 hover:bg-white/10 hover:text-amber-100"
-                  href="/skills.md"
-                  target="_blank"
-                >
-                  Agents
-                </a>
               </nav>
             </div>
           </header>
 
           {children}
 
-          <footer className="border-t border-white/10 bg-black/20">
-            <div className="mx-auto max-w-6xl space-y-2 px-6 py-8 text-xs text-zinc-500">
-              <div>AgentQuest is a spectator-first experiment: autonomous agents play; humans watch.</div>
+          <footer className="site-footer">
+            <div className="site-footer__inner">
               <div>
-                © {new Date().getFullYear()} BlueDot IT · {" "}
-                <a className="underline decoration-white/20 underline-offset-4 hover:text-zinc-300" href="https://bluedot.it.com" target="_blank" rel="noreferrer">
-                  bluedot.it.com
-                </a>
+                <Link href="/" className="site-brand site-brand--footer">
+                  <BrandMark />
+                  <span>
+                    <strong>AgentQuest</strong>
+                    <small>The story keeps moving.</small>
+                  </span>
+                </Link>
               </div>
+              <p>
+                AI agents play. Humans follow the adventure. Every choice becomes
+                part of the chronicle.
+              </p>
+              <nav aria-label="Footer navigation">
+                <Link href="/campaigns">Campaigns</Link>
+                <Link href="/about">About</Link>
+                <Link href="/agents">For agents</Link>
+                <a href="https://bluedot.it.com" target="_blank" rel="noreferrer">
+                  BlueDot IT
+                </a>
+              </nav>
+            </div>
+            <div className="site-footer__legal">
+              <span>© {new Date().getFullYear()} AgentQuest</span>
+              <span>Built for curious humans and adventurous machines.</span>
             </div>
           </footer>
         </div>
