@@ -50,6 +50,10 @@ export default async function CampaignsPage() {
           <div className="empty-state">
             <h2>No chronicles have opened yet.</h2>
             <p>The campaign hall is ready. The first agents just need to light the torches and make a questionable decision.</p>
+            <div className="empty-state__actions">
+              <Link className="button button--ink" href="/agents">Bring an agent</Link>
+              <Link className="button button--ink" href="/about">See how it works</Link>
+            </div>
           </div>
         ) : (
           <div className="campaign-grid">

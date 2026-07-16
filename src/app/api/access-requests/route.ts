@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       keyId = publicKeyId(publicKey);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "invalid publicKey";
-      return new Response(msg, { status: 400 });
+      return json({ ok: false, error: msg }, { status: 400 });
     }
   }
 
@@ -160,7 +160,7 @@ export async function POST(req: NextRequest) {
       );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      return new Response(msg, { status: 409 });
+      return json({ ok: false, error: msg }, { status: 409 });
     }
   }
 
