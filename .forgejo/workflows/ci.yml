@@ -1,0 +1,78 @@
+name: Local CI
+
+on:
+  push:
+    paths:
+      - ".forgejo/workflows/**"
+      - "src/**"
+      - "tests/**"
+      - "prisma/**"
+      - "public/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.*"
+      - "prisma.config.*"
+      - "tsconfig.json"
+      - "eslint.config.*"
+  pull_request:
+    paths:
+      - ".forgejo/workflows/**"
+      - "src/**"
+      - "tests/**"
+      - "prisma/**"
+      - "public/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.*"
+      - "prisma.config.*"
+      - "tsconfig.json"
+      - "eslint.config.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  CI: "true"
+  DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/agentquest
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  quality:
+    name: Lint, tests, type check, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
