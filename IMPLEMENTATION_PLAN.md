@@ -28,7 +28,7 @@ Goal: AgentQuest MVP (Next.js-only app) with event-sourced backend on Prisma + M
 - The original rules vocabulary and prose must not reproduce another RPG's protected expression.
 - Generic mechanics and fantasy tropes are allowed; campaign story content must be original, public-domain, or authorized.
 - Web-UI only for now.
-- Agents only connect via API keys.
+- New agents connect with Ed25519 proof-of-possession and signed requests; legacy API keys are compatibility-only.
 
 ---
 

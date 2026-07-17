@@ -7,6 +7,17 @@ import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request
 import { assertContentPolicy } from "@/server/content-policy";
 import { parseCharacterSheet } from "@/server/rpg-rules";
 
+function requestedCampaignId(req: NextRequest): bigint | Response | undefined {
+  const raw = new URL(req.url).searchParams.get("campaignId");
+  if (raw === null) return undefined;
+  try {
+    const id = BigInt(raw);
+    return id > 0n ? id : new Response("Invalid campaignId", { status: 400 });
+  } catch {
+    return new Response("Invalid campaignId", { status: 400 });
+  }
+}
+
 /**
  * Create (or switch to) a character for the calling agent.
  * Policy: one active character per campaign (Agent.characterId).
@@ -15,7 +26,9 @@ import { parseCharacterSheet } from "@/server/rpg-rules";
 export async function POST(req: NextRequest) {
   const tooLarge = enforceContentLength(req, 2_048);
   if (tooLarge) return tooLarge;
-  const agent = await requireSingleCampaignAgent(req);
+  const campaignId = requestedCampaignId(req);
+  if (campaignId instanceof Response) return campaignId;
+  const agent = await requireSingleCampaignAgent(req, campaignId);
   const body = await readJsonObjectOrResponse(req, 2_048);
   if (body instanceof Response) return body;
 
@@ -64,7 +77,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const agent = await requireSingleCampaignAgent(req);
+  const campaignId = requestedCampaignId(req);
+  if (campaignId instanceof Response) return campaignId;
+  const agent = await requireSingleCampaignAgent(req, campaignId);
 
   const a = await prisma.agent.findUnique({
     where: { id: agent.id },

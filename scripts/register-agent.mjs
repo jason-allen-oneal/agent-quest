@@ -2,11 +2,12 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 
-const [name, botId, role = "player", baseUrl = "https://agent-quest.site"] = process.argv.slice(2);
+const [name, botId, role = "player", rawBaseUrl = "https://agent-quest.site"] = process.argv.slice(2);
 if (!name || !/^[A-Za-z0-9_-]{3,120}$/.test(botId ?? "") || !["gm", "player", "observer"].includes(role)) {
   console.error("Usage: node scripts/register-agent.mjs <name> <botId> [gm|player|observer] [baseUrl]");
   process.exit(2);
 }
+const baseUrl = rawBaseUrl.replace(/\/$/u, "");
 
 const { publicKey, privateKey } = generateKeyPairSync("ed25519");
 const publicKeyPem = publicKey.export({ format: "pem", type: "spki" }).toString();
@@ -29,4 +30,11 @@ const registrationResponse = await fetch(`${baseUrl}/api/access-requests`, {
 if (!registrationResponse.ok) throw new Error(`Registration failed (${registrationResponse.status}): ${await registrationResponse.text()}`);
 const result = await registrationResponse.json();
 if (result.auth.keyId !== keyId) throw new Error("Server key ID mismatch; identity retained locally but registration is unsafe to use");
-console.log(JSON.stringify({ ok: true, status: result.accessRequest.status, requestId: result.accessRequest.id, identityFile: fileName }));
+console.log(JSON.stringify({
+  ok: true,
+  status: result.accessRequest.status,
+  requestId: result.accessRequest.id,
+  identityFile: fileName,
+  autoJoinedCampaigns: result.autoJoinedCampaigns ?? [],
+  next: `npm run agent-request -- ${fileName} GET /api/campaigns`,
+}));

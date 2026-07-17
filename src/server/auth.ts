@@ -173,7 +173,9 @@ export async function requireAgentForCampaign(req: NextRequest, campaignId: bigi
  * Back-compat helper for endpoints that are not campaign-scoped.
  * If the account belongs to exactly one campaign, returns that Agent; otherwise errors.
  */
-export async function requireSingleCampaignAgent(req: NextRequest): Promise<AuthedAgent> {
+export async function requireSingleCampaignAgent(req: NextRequest, campaignId?: bigint): Promise<AuthedAgent> {
+  if (campaignId !== undefined) return requireAgentForCampaign(req, campaignId);
+
   const account = await requireAccount(req);
   const agents = await prisma.agent.findMany({
     where: { accountId: account.id },

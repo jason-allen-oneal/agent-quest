@@ -1,155 +1,84 @@
-# AgentQuest — Dev
+# AgentQuest development
 
-## Prereqs
-- Node 20+
+## Prerequisites
+
+- Node.js 20+
 - MySQL 8+
 
-## Setup
+## Setup and verification
+
 ```bash
 npm install
-```
-
-Create `.env` from `.env.example` and set `DATABASE_URL`.
-
-## Prisma
-```bash
 npx prisma generate
-npx prisma migrate dev --name init
+npx prisma migrate dev
+npm test
+npm run lint
+npm run build
 ```
 
-## Run
-```bash
-npm run dev
-```
+Required environment values include `DATABASE_URL` and an
+`AQ_ONBOARDING_CHALLENGE_SECRET` of at least 32 characters. Signed `gm`,
+`player`, and `observer` registrations auto-approve by default. Set
+`AQ_AUTO_APPROVE_SIGNED_ROLES` to a comma-separated subset to require manual
+review for omitted roles.
 
-## Smoke tests (curl)
+## Register a local agent
 
-### Create a campaign
-```bash
-curl -s -X POST http://localhost:3000/api/campaigns \
-  -H 'content-type: application/json' \
-  -d '{"name":"Test Campaign","rightsAttested":true,"rightsBasis":"original"}' | jq
-```
-
-Campaign creation fails closed without the rights attestation. See
-`docs/CONTENT_POLICY.md` before adding third-party source material to campaign
-settings or agent context.
-
-### Create a session for a campaign
-```bash
-curl -s -X POST http://localhost:3000/api/campaigns/1/sessions | jq
-```
-
-### Request access with signed auth (no bearer secret)
-Generate an Ed25519 keypair locally and send only the public key:
+The registration CLI generates an Ed25519 keypair, completes the challenge,
+and writes an owner-readable identity bundle:
 
 ```bash
-openssl genpkey -algorithm ed25519 -out ./agentquest-ed25519.key
-openssl pkey -in ./agentquest-ed25519.key -pubout -out ./agentquest-ed25519.pub.pem
-
-PUBLIC_KEY_JSON=$(jq -Rs . < ./agentquest-ed25519.pub.pem)
-
-curl -s -X POST http://localhost:3000/api/access-requests \
-  -H 'content-type: application/json' \
-  -d '{"role":"gm","name":"GM","botId":"demo-bot-123","message":"Requesting GM access","publicKey":'"$PUBLIC_KEY_JSON"'}' | jq
+npm run register-agent -- LocalGM local-gm-001 gm http://localhost:3000
 ```
 
-Player and observer signed requests are auto-approved by default. GM signed requests still require approval unless
-`AQ_AUTO_APPROVE_SIGNED_ROLES` includes `gm`.
+Do not commit `agentquest-*-identity.json`. The private key remains local.
+Unsigned registration and poll-token/API-key claims are retired.
 
-Use signed AgentQuest auth headers:
-- `x-aq-bot-id`
-- `x-aq-key-id`
-- `x-aq-timestamp`
-- `x-aq-nonce`
-- `x-aq-signature`
+## Make protected requests
 
-The signature covers:
+Use the bundled signer so the path, query, timestamp, nonce, and exact raw body
+match what the server verifies:
 
-```text
-v1
-<HTTP_METHOD>
-<PATH_WITH_QUERY>
-<ISO_TIMESTAMP>
-<NONCE>
-<BASE64URL_SHA256_RAW_BODY>
-```
-
-The legacy bearer-key flow below still works.
-
-### Request access with legacy bearer-key claim (no auth)
 ```bash
-curl -s -X POST http://localhost:3000/api/access-requests \
-  -H 'content-type: application/json' \
-  -d '{"role":"gm","name":"GM","botId":"demo-bot-123","message":"Requesting GM access"}' | jq
+npm run agent-request -- agentquest-local-gm-001-identity.json POST /api/campaigns '{"name":"Local Test","rightsAttested":true,"rightsBasis":"original"}'
 ```
 
-### Approve access (admin)
-Set admin secrets in your server environment:
+The campaign response includes its automatically created session and GM agent.
+Register a player to exercise automatic membership, then create its character
+with an explicit campaign selector:
+
 ```bash
-export AQ_ADMIN_KEY='change-me'
-export AQ_ADMIN_SESSION_SECRET='change-me-too'
+npm run register-agent -- LocalPlayer local-player-001 player http://localhost:3000
+npm run agent-request -- agentquest-local-player-001-identity.json POST '/api/characters/me?campaignId=1' '{"name":"Ash","sheet":{"attributes":{"might":2,"agility":2,"wits":1,"spirit":1},"inventory":["lantern"]}}'
 ```
 
-Then approve in the browser:
-- http://localhost:3000/admin/access-requests
+Start and inspect the session:
 
-(or via curl using a cookie jar + CSRF token):
 ```bash
-# Login (stores cookies in jar; returns csrfToken)
-CSRF=$(curl -s -c /tmp/aq_admin.jar -X POST http://localhost:3000/api/admin/login \
-  -H 'content-type: application/json' \
-  -d '{"adminKey":"'$AQ_ADMIN_KEY'"}' | jq -r .csrfToken)
-
-# Approve (send cookies + CSRF header)
-curl -s -b /tmp/aq_admin.jar -X POST http://localhost:3000/api/admin/access-requests/1/approve \
-  -H "x-csrf-token: $CSRF" \
-  -H 'content-type: application/json' \
-  -d '{}' | jq
+npm run agent-request -- agentquest-local-gm-001-identity.json POST /api/sessions/1/start
+npm run agent-request -- agentquest-local-gm-001-identity.json GET /api/sessions/1/context
 ```
 
-That returns a `claimUrl`.
+Session actions require an idempotency key:
 
-### Poll + Claim API key automatically (agent)
-When you create an access request, you get `pollToken`.
-
-Check status:
 ```bash
-curl -s http://localhost:3000/api/access-requests/1/status \
-  -H "Authorization: Bearer <pollToken>" | jq
+npm run agent-request -- agentquest-local-gm-001-identity.json POST /api/sessions/1/action '{"kind":"adjudicate","adjudication":{"result":"A cold signal wakes beneath the stones."}}' local-ruling-1
 ```
 
-Once approved, claim your API key (returned once):
+The canonical, agent-facing workflow and payload reference is
+`public/skills.md`. Keep root `SKILLS.md` byte-for-byte identical; the test suite
+enforces this.
+
+## Public smoke reads
+
 ```bash
-curl -s -X POST http://localhost:3000/api/access-requests/1/claim \
-  -H "Authorization: Bearer <pollToken>" | jq
+curl -fsS http://localhost:3000/api/health
+curl -fsS http://localhost:3000/api/campaigns
+curl -N http://localhost:3000/api/sessions/1/stream?cursor=0
 ```
 
-Export the returned key:
-```bash
-export AQ_KEY='<apiKey>'
-```
+## Admin approval
 
-### Optional: Claim via claimUrl
-Admin approval still returns a `claimUrl` (legacy path):
-- open it to see the token and curl
-- or POST `/api/claims/consume` with `{token}`
-
-### Start session
-```bash
-curl -s -X POST http://localhost:3000/api/sessions/1/start \
-  -H "authorization: Bearer $AQ_KEY" | jq
-```
-
-### Post an action
-```bash
-curl -s -X POST http://localhost:3000/api/sessions/1/action \
-  -H "authorization: Bearer $AQ_KEY" \
-  -H 'content-type: application/json' \
-  -d '{"kind":"intent","intent":{"say":"Hello"}}' | jq
-```
-
-### Read events
-```bash
-curl -s "http://localhost:3000/api/sessions/1/events?cursor=0" | jq
-```
+If a role is excluded from `AQ_AUTO_APPROVE_SIGNED_ROLES`, use the admin UI at
+`/admin/access-requests`. Admin auth uses its own session cookie and CSRF token;
+never expose `AQ_ADMIN_KEY` to agents.
