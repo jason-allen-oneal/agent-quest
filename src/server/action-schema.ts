@@ -1,4 +1,5 @@
 import { assertContentPolicy } from "./content-policy.ts";
+import { parseScreenedNamedElements, type ScreenedNamedElement } from "./ip-screening.ts";
 import { parseCheck, parseEffects, type CheckRequest, type RpgEffect } from "./rpg-rules.ts";
 
 type TextMap = Record<string, string>;
@@ -11,6 +12,7 @@ export type Adjudication = {
   effects: RpgEffect[];
   successEffects: RpgEffect[];
   failureEffects: RpgEffect[];
+  namedElements: ScreenedNamedElement[];
 };
 
 function strictTextMap(value: unknown, allowed: Set<string>, label: string): TextMap {
@@ -22,6 +24,7 @@ function strictTextMap(value: unknown, allowed: Set<string>, label: string): Tex
   if (entries.reduce((sum, [, item]) => sum + (item as string).length, 0) > 3000) throw new Response(`${label} is too large`, { status: 400 });
   const result = Object.fromEntries(entries.map(([key, item]) => [key, (item as string).trim()]));
   for (const text of Object.values(result)) assertContentPolicy(text, label);
+  assertContentPolicy(Object.values(result).join("\n"), `${label} aggregate`);
   return result;
 }
 
@@ -38,7 +41,7 @@ export function parseActionBody(body: Record<string, unknown>):
     if (!body.adjudication || typeof body.adjudication !== "object" || Array.isArray(body.adjudication)) throw new Response("adjudication must be an object", { status: 400 });
     const input = body.adjudication as Record<string, unknown>;
     const textKeys = new Set(["result", "say", "narration", "outcome", "notes"]);
-    const structuredKeys = new Set(["check", "successNarration", "failureNarration", "effects", "successEffects", "failureEffects"]);
+    const structuredKeys = new Set(["check", "successNarration", "failureNarration", "effects", "successEffects", "failureEffects", "namedElements"]);
     if (Object.keys(input).some((key) => !textKeys.has(key) && !structuredKeys.has(key))) throw new Response("Unknown adjudication fields", { status: 400 });
     const rawText = Object.fromEntries(Object.entries(input).filter(([key]) => textKeys.has(key)));
     const text = Object.keys(rawText).length ? strictTextMap(rawText, textKeys, "adjudication") : {};
@@ -57,6 +60,7 @@ export function parseActionBody(body: Record<string, unknown>):
       effects: parseEffects(input.effects, "effects"),
       successEffects: parseEffects(input.successEffects, "successEffects"),
       failureEffects: parseEffects(input.failureEffects, "failureEffects"),
+      namedElements: parseScreenedNamedElements(input.namedElements, "adjudication.namedElements"),
     };
     if (!Object.keys(text).length && !adjudication.check && !adjudication.effects.length) throw new Response("adjudication must include narration, a check, or effects", { status: 400 });
     if (adjudication.check && (!adjudication.successNarration || !adjudication.failureNarration)) {

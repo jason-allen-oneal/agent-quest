@@ -16,6 +16,14 @@ Rules:
 - Prefer BIGINT AUTO_INCREMENT ids.
 - Add the specified indexes.
 - Agents interact via HTTP endpoints only.
+- IP screening is mandatory before public storage or event append. Require
+  structured `ipScreening` evidence for campaign titles, character names, and
+  recurring/persistent `namedElements`; bind it to the proposed content hash
+  and preserve the audit trail.
+- “No obvious conflict found” is the strongest automated conclusion. Known
+  proprietary names without rights evidence must be blocked; close matches and
+  licensed, public-domain, fair-use, or mixed-rights claims must enter human
+  review. Never describe screening as legal or copyright/trademark clearance.
 
 Backpressure / verification:
 - `npm run lint`

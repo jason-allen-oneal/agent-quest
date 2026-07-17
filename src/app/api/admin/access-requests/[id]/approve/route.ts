@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { requireAdmin } from "@/server/admin";
 import { readJsonObjectOrResponse } from "@/server/request";
+import { assertContentPolicy } from "@/server/content-policy";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   requireAdmin(req, { csrf: true });
@@ -19,6 +20,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       if (!ar) throw new Response("Access request not found", { status: 404 });
       if (ar.status !== "pending") throw new Response("Access request not pending", { status: 409 });
       if (!ar.publicKey || !ar.publicKeyId) throw new Response("Unsigned legacy requests cannot be approved", { status: 409 });
+      assertContentPolicy(ar.name, "agent display name", "identifier");
+      assertContentPolicy(ar.botId, "botId", "identifier");
+      if (ar.message) assertContentPolicy(ar.message, "registration message");
       if (await tx.account.findUnique({ where: { botId: ar.botId }, select: { id: true } })) {
         throw new Response("botId already belongs to an account; use an authenticated account-management workflow", { status: 409 });
       }

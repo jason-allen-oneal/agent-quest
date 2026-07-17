@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { beatFromEvent, buildChronicleBeats, buildTurns } from "../src/lib/chronicle.ts";
+import {
+  beatFromEvent,
+  buildChronicleBeats,
+  buildTurns,
+  deriveTableStatus,
+  isChronicleNearBottom,
+} from "../src/lib/chronicle.ts";
 
 function event(overrides = {}) {
   return {
@@ -71,6 +77,7 @@ test("collapses actor initialization noise into one party beat", () => {
   ]);
 
   assert.equal(beats.length, 1);
+  assert.equal(beats[0].event.sequence, "3");
   assert.equal(beats[0].title, "Adventurers enter the story");
   assert.match(beats[0].body, /BarnacleBoy and Nyx Vesper/);
 });
@@ -105,4 +112,39 @@ test("classifies the first narration as the opening scene", () => {
   assert.equal(beats[1].title, "The scene is set");
   assert.equal(beats[1].tone, "scene");
   assert.equal(beats[1].body, "Rain wakes the buried city.");
+});
+
+test("names the GM responsible for a pending player action", () => {
+  const status = deriveTableStatus([
+    event({ sequence: "1", type: "SESSION_STARTED", agentId: "1", agent: { id: "1", name: "ZeroSignal", role: "gm", character: null } }),
+    event({ sequence: "2", type: "TURN_ADVANCED", payload: { turnNumber: 2, phase: "awaiting_intent", startedAtMs: 100 }, agentId: "2", agent: { id: "2", name: "BarnacleBoy", role: "player", character: { name: "BarnacleBoy" } } }),
+    event({ sequence: "3", type: "ACTION_SUBMITTED", payload: { intent: { action: "Test the water." }, submittedAtMs: 200 }, agentId: "2", agent: { id: "2", name: "BarnacleBoy", role: "player", character: { name: "BarnacleBoy" } } }),
+  ]);
+
+  assert.equal(status.phase, "awaiting_adjudication");
+  assert.equal(status.responsibleName, "ZeroSignal");
+  assert.equal(status.label, "ZeroSignal must rule next");
+  assert.match(status.detail, /resolve BarnacleBoy's move/);
+  assert.equal(status.sinceMs, 200);
+});
+
+test("names the player responsible while awaiting intent", () => {
+  const status = deriveTableStatus([
+    event({ sequence: "1", type: "TURN_ADVANCED", payload: { turnNumber: 2, phase: "awaiting_intent", startedAtMs: 100 }, agentId: "2", agent: { id: "2", name: "BarnacleBoy", role: "player", character: { name: "BarnacleBoy" } } }),
+  ]);
+
+  assert.equal(status.label, "BarnacleBoy acts next");
+  assert.equal(status.responsibleName, "BarnacleBoy");
+});
+
+test("keeps live following active only near the bottom of the chronicle", () => {
+  assert.equal(isChronicleNearBottom({ scrollHeight: 1_000, scrollTop: 500, clientHeight: 428 }), true);
+  assert.equal(isChronicleNearBottom({ scrollHeight: 1_000, scrollTop: 499, clientHeight: 428 }), false);
+  assert.equal(isChronicleNearBottom({ scrollHeight: 1_000, scrollTop: 600, clientHeight: 400 }), true);
+});
+
+test("allows a custom live-follow threshold", () => {
+  const metrics = { scrollHeight: 1_000, scrollTop: 550, clientHeight: 400 };
+  assert.equal(isChronicleNearBottom(metrics, 50), true);
+  assert.equal(isChronicleNearBottom(metrics, 49), false);
 });

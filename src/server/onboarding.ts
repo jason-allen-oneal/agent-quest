@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { normalizeEd25519PublicKey, publicKeyId, timingSafeEqualHex, verifyEd25519 } from "./crypto.ts";
+import { assertContentPolicy } from "./content-policy.ts";
 
 export type Registration = {
   role: "gm" | "player" | "observer";
@@ -10,6 +11,34 @@ export type Registration = {
   publicKey: string;
   keyId: string;
 };
+
+export type StartedCharacterUpsertMode = "create" | "replace";
+
+/**
+ * Decide whether an initialized player seat can attach character data after a
+ * campaign has started. This is the durable re-entry path for a seat restored
+ * without its old Character row. A manually restored player seat may initialize
+ * its missing actor exactly once. Existing actors still require a replacement path so a membership
+ * alone cannot silently overwrite live state.
+ */
+export function planStartedCharacterUpsert(input: {
+  role: Registration["role"];
+  sessionStatus: "created" | "active" | "paused" | "stopped";
+  characterId: bigint | null;
+  actorInitialized: boolean;
+}): StartedCharacterUpsertMode {
+  if (input.role !== "player") throw new Response("Player role required", { status: 403 });
+  if (input.sessionStatus === "created") {
+    throw new Response("Use character creation before session start", { status: 409 });
+  }
+  if (input.sessionStatus === "stopped") {
+    throw new Response("Cannot change a character in a stopped session", { status: 409 });
+  }
+  if (!input.actorInitialized && input.characterId !== null) {
+    throw new Response("Player actor is not initialized", { status: 409 });
+  }
+  return input.characterId === null ? "create" : "replace";
+}
 
 function challengeSecret(): string {
   const secret = process.env.AQ_ONBOARDING_CHALLENGE_SECRET;
@@ -22,13 +51,18 @@ export function parseRegistration(body: Record<string, unknown>): Registration {
   if (role !== "gm" && role !== "player" && role !== "observer") throw new Response("role must be gm|player|observer", { status: 400 });
   const name = String(body.name ?? "").trim();
   if (!name || name.length > 120) throw new Response("name must be 1-120 characters", { status: 400 });
+  assertContentPolicy(name, "agent display name", "identifier");
   const botId = String(body.botId ?? "").trim();
   if (!/^[A-Za-z0-9_-]{3,120}$/.test(botId)) throw new Response("botId must be 3-120 letters, numbers, dashes, or underscores", { status: 400 });
+  assertContentPolicy(botId, "botId", "identifier");
   const message = body.message == null ? null : String(body.message).trim();
   if (message && message.length > 1000) throw new Response("message must be at most 1000 characters", { status: 400 });
+  if (message) assertContentPolicy(message, "registration message");
   if (body.tags != null && !Array.isArray(body.tags)) throw new Response("tags must be an array", { status: 400 });
   const tags = (Array.isArray(body.tags) ? body.tags : []).map((v) => String(v).trim());
   if (tags.length > 25 || tags.some((v) => !v || v.length > 50)) throw new Response("tags must contain at most 25 non-empty values of 50 characters", { status: 400 });
+  for (const tag of tags) assertContentPolicy(tag, "registration tag");
+  assertContentPolicy([name, botId, message, ...tags].filter(Boolean).join("\n"), "registration aggregate");
   const rawKey = String(body.publicKey ?? "").trim();
   if (!rawKey || rawKey.length > 4096) throw new Response("publicKey is required and must be at most 4096 characters", { status: 400 });
   let publicKey: string;

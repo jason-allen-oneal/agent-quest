@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   buildChronicleBeats,
   buildTurns,
+  deriveTableStatus,
+  isChronicleNearBottom,
   type ChronicleBeat,
   type StreamEvent,
 } from "@/lib/chronicle";
@@ -33,12 +35,12 @@ function toneClasses(tone: ChronicleBeat["tone"]) {
   }
 }
 
-function Beat({ beat, compact = false }: { beat: ChronicleBeat; compact?: boolean }) {
+function Beat({ beat, compact = false, chat = false }: { beat: ChronicleBeat; compact?: boolean; chat?: boolean }) {
   const time = formatTime(beat.event.createdAt);
 
   if (beat.presentation === "marker") {
     return (
-      <div className="chronicle-marker" aria-label={`${beat.eyebrow}: ${beat.title}`}>
+      <div className={`chronicle-marker ${chat ? "chronicle-marker--chat" : ""}`} aria-label={`${beat.eyebrow}: ${beat.title}`}>
         <span>{beat.title}</span>
         <time>{time ?? "Recorded"}</time>
       </div>
@@ -46,7 +48,7 @@ function Beat({ beat, compact = false }: { beat: ChronicleBeat; compact?: boolea
   }
 
   return (
-    <article className={`chronicle-beat ${compact ? "chronicle-beat--compact" : ""} ${toneClasses(beat.tone)}`}>
+    <article className={`chronicle-beat ${compact ? "chronicle-beat--compact" : ""} ${chat ? "chronicle-beat--chat" : ""} ${toneClasses(beat.tone)}`}>
       <div className="chronicle-beat__meta">
         <div>{beat.eyebrow}</div>
         <div>{time ?? "Recorded"}</div>
@@ -67,9 +69,14 @@ export default function SessionWatchPage({
   const [status, setStatus] = useState<string>("connecting");
   const [view, setView] = useState<"live" | "recap">("live");
   const [campaign, setCampaign] = useState<{ name: string; description: string } | null>(null);
+  const [hasUnseen, setHasUnseen] = useState(false);
+  const [isAtLatest, setIsAtLatest] = useState(true);
+  const chatViewportRef = useRef<HTMLDivElement>(null);
+  const stickToLatestRef = useRef(true);
+  const renderedBeatSequenceRef = useRef<string | null>(null);
 
   useEffect(() => {
-    params.then(({ id }) => setSessionId(id));
+    Promise.resolve(params).then(({ id }) => setSessionId(id));
   }, [params]);
 
   useEffect(() => {
@@ -110,8 +117,55 @@ export default function SessionWatchPage({
   const beats = useMemo(() => buildChronicleBeats(events), [events]);
   const turns = useMemo(() => buildTurns(events), [events]);
   const openingScene = beats.find((beat) => beat.tone === "scene");
-  const latestStoryBeat = [...beats].reverse().find((beat) => beat.tone === "scene" || beat.tone === "gm" || beat.tone === "action");
   const latestTurn = [...turns].reverse().find((turn) => turn.turnNumber > 0);
+  const tableStatus = useMemo(() => deriveTableStatus(events), [events]);
+  const latestBeatSequence = beats.at(-1)?.event.sequence ?? null;
+
+  useEffect(() => {
+    if (view !== "live" || beats.length === 0) return;
+    const viewport = chatViewportRef.current;
+    if (!viewport) return;
+
+    const previousSequence = renderedBeatSequenceRef.current;
+    const hasNewBeat = latestBeatSequence !== previousSequence;
+    renderedBeatSequenceRef.current = latestBeatSequence;
+
+    const frame = window.requestAnimationFrame(() => {
+      if (!stickToLatestRef.current) {
+        if (hasNewBeat) setHasUnseen(true);
+        return;
+      }
+      viewport.scrollTop = viewport.scrollHeight;
+      setIsAtLatest(true);
+      setHasUnseen(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [beats.length, latestBeatSequence, view]);
+
+  function handleChatScroll() {
+    const viewport = chatViewportRef.current;
+    if (!viewport) return;
+    const atLatest = isChronicleNearBottom(viewport);
+    stickToLatestRef.current = atLatest;
+    setIsAtLatest(atLatest);
+    if (atLatest) setHasUnseen(false);
+  }
+
+  function jumpToLatest() {
+    const viewport = chatViewportRef.current;
+    if (!viewport) return;
+    stickToLatestRef.current = true;
+    setIsAtLatest(true);
+    setHasUnseen(false);
+    viewport.scrollTop = viewport.scrollHeight;
+  }
+
+  function showLiveView() {
+    stickToLatestRef.current = true;
+    setIsAtLatest(true);
+    setHasUnseen(false);
+    setView("live");
+  }
 
   if (!sessionId) {
     return (
@@ -136,12 +190,14 @@ export default function SessionWatchPage({
         <div className="view-switcher" aria-label="Chronicle view">
           <button
             className={view === "live" ? "is-active" : ""}
-            onClick={() => setView("live")}
+            type="button"
+            onClick={showLiveView}
           >
             Latest
           </button>
           <button
             className={view === "recap" ? "is-active" : ""}
+            type="button"
             onClick={() => setView("recap")}
           >
             Turn recap
@@ -151,43 +207,61 @@ export default function SessionWatchPage({
 
       {view === "live" ? (
         <section className="session-layout">
-          <div>
-            {latestStoryBeat ? (
-              <div className="latest-scene">
-                <div className="latest-scene__header">
-                  <div>
-                    <span>{latestStoryBeat.tone === "scene" ? "Opening scene" : "Where the story stands"}</span>
-                    <p>{latestStoryBeat.tone === "scene" ? "The Game Master sets the place, danger, and first choice" : "The latest action or story consequence"}</p>
-                  </div>
-                  {latestTurn ? (
-                    <div className="turn-pill">{latestTurn.roundNumber ? `Round ${latestTurn.roundNumber} · ` : ""}Turn {latestTurn.turnNumber}</div>
-                  ) : null}
-                </div>
-                <Beat beat={latestStoryBeat} />
+          <div className="chronicle-chat">
+            <div className="chronicle-chat__header">
+              <div>
+                <span className="kicker">Live chronicle</span>
+                <h2>The story so far</h2>
               </div>
-            ) : (
-              <div className="chronicle-empty">
-                <h2>The candles are lit.</h2>
-                <p>Waiting for the first adventurer to make a move.</p>
+              <div className="chronicle-chat__header-meta">
+                {latestTurn ? (
+                  <div className="turn-pill">{latestTurn.roundNumber ? `Round ${latestTurn.roundNumber} · ` : ""}Turn {latestTurn.turnNumber}</div>
+                ) : null}
+                <span>{beats.length} {beats.length === 1 ? "entry" : "entries"}</span>
               </div>
-            )}
+            </div>
 
-            <div className="chronicle-list">
-              <div className="chronicle-list__header">
-                <div><span className="kicker">As it happened</span><h2>The story so far</h2></div>
-                <div>{beats.length} {beats.length === 1 ? "entry" : "entries"}</div>
+            <div className="chronicle-chat__body">
+              <div className="chronicle-chat__top-fade" aria-hidden="true" />
+              <div
+                ref={chatViewportRef}
+                className="chronicle-chat__viewport"
+                onScroll={handleChatScroll}
+                role="log"
+                aria-live="polite"
+                aria-relevant="additions"
+                aria-label="Live campaign chronicle"
+                tabIndex={0}
+              >
+                {beats.length ? (
+                  <div className="chronicle-chat__messages">
+                    {beats.map((beat) => (
+                      <Beat key={beat.event.sequence} beat={beat} compact chat />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="chronicle-chat__empty">
+                    <h3>The candles are lit.</h3>
+                    <p>Waiting for the first adventurer to make a move.</p>
+                  </div>
+                )}
               </div>
-              {beats.length ? (
-                <div className="chronicle-stack">
-                  {beats.map((beat) => (
-                    <Beat key={beat.event.sequence} beat={beat} compact />
-                  ))}
-                </div>
-              ) : (
-                <div className="chronicle-empty chronicle-empty--small">
-                  <p>No chronicle entries have arrived yet.</p>
-                </div>
-              )}
+
+              {!isAtLatest ? (
+                <button
+                  className="chronicle-chat__latest"
+                  type="button"
+                  onClick={jumpToLatest}
+                  aria-label={hasUnseen ? "New story beat. Return to the latest chronicle entry." : "Return to the latest chronicle entry."}
+                >
+                  {hasUnseen ? "New story beat" : "Back to latest"} ↓
+                </button>
+              ) : null}
+            </div>
+
+            <div className="chronicle-chat__footer">
+              <span className="connection-state"><span className="live-dot" /> {status === "live" ? "Following live" : "Reconnecting"}</span>
+              <span>Newest entries appear at the bottom</span>
             </div>
           </div>
 
@@ -206,15 +280,19 @@ export default function SessionWatchPage({
                 <dd>{latestTurn ? `${latestTurn.roundNumber ? `Round ${latestTurn.roundNumber} · ` : ""}Turn ${latestTurn.turnNumber}` : "Opening"}</dd>
               </div>
               <div>
-                <dt>In the spotlight</dt>
-                <dd>{latestTurn?.agentName ?? "Waiting for a hero"}</dd>
+                <dt>Next action</dt>
+                <dd>{tableStatus.label}</dd>
+              </div>
+              <div>
+                <dt>Why play is paused</dt>
+                <dd>{tableStatus.detail}</dd>
               </div>
               <div>
                 <dt>Connection</dt>
                 <dd className="connection-state"><span className="live-dot" /> {status === "live" ? "Following live" : "Reconnecting"}</dd>
               </div>
             </dl>
-            <p className="table-state__note">New turns appear here automatically. You can leave the page open and let the story come to you.</p>
+            <p className="table-state__note">The chronicle updates automatically. Agent actions still require the named agent to be awake and connected.</p>
           </aside>
         </section>
       ) : (

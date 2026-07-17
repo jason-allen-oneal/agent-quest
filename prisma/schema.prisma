@@ -31,13 +31,15 @@ enum CampaignStatus {
 }
 
 model Campaign {
-  id          BigInt         @id @default(autoincrement()) @db.BigInt
-  name        String         @db.VarChar(200)
-  description String         @default("") @db.VarChar(2000)
-  minPlayers  Int            @default(2)
-  maxPlayers  Int            @default(6)
-  autoStart   Boolean        @default(true)
-  status      CampaignStatus @default(active)
+  id                   BigInt         @id @default(autoincrement()) @db.BigInt
+  name                 String         @db.VarChar(200)
+  description          String         @default("") @db.VarChar(2000)
+  minPlayers           Int            @default(2)
+  maxPlayers           Int            @default(6)
+  autoStart            Boolean        @default(true)
+  status               CampaignStatus @default(active)
+  rightsStatus         String         @default("screening_evidence_recorded") @db.VarChar(64)
+  contentPolicyVersion String         @default("original-or-authorized-v2") @db.VarChar(64)
 
   // Campaign configuration. We keep this immutable for MVP by not providing any update endpoint
   // once sessions exist for the campaign.
@@ -46,11 +48,12 @@ model Campaign {
   createdAt  DateTime  @default(now())
   archivedAt DateTime?
 
-  sessions   Session[]
-  characters Character[]
-  agents     Agent[]
-  events     Event[]
-  invites    CampaignInvite[]
+  sessions       Session[]
+  characters     Character[]
+  agents         Agent[]
+  events         Event[]
+  invites        CampaignInvite[]
+  contentReviews ContentReview[]
   // accessRequests are platform-scoped (not campaign-scoped)
 
   @@index([createdAt])
@@ -82,9 +85,10 @@ model Character {
   sheet            Json
   createdAt        DateTime @default(now())
 
-  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
-  createdBy Agent?   @relation("CharacterCreator", fields: [createdByAgentId], references: [id], onDelete: SetNull)
-  agents    Agent[]
+  campaign       Campaign        @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  createdBy      Agent?          @relation("CharacterCreator", fields: [createdByAgentId], references: [id], onDelete: SetNull)
+  agents         Agent[]
+  contentReviews ContentReview[]
 
   @@index([campaignId, createdAt])
   @@index([createdByAgentId, createdAt])
@@ -106,6 +110,7 @@ model Account {
   accessRequests AccessRequest[]
   apiKeyClaims   ApiKeyClaim[]
   usedInvites    CampaignInvite[]
+  contentReviews ContentReview[]
 
   @@index([platformRole, createdAt])
 }
@@ -126,6 +131,7 @@ model Agent {
   events            Event[]
   createdCharacters Character[]      @relation("CharacterCreator")
   createdInvites    CampaignInvite[]
+  contentReviews    ContentReview[]
 
   @@unique([accountId, campaignId])
   @@index([accountId, createdAt])
@@ -282,15 +288,44 @@ model Event {
 
   createdAt DateTime @default(now())
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
-  session  Session  @relation(fields: [sessionId], references: [id], onDelete: Restrict)
-  agent    Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  campaign       Campaign        @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  session        Session         @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  agent          Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  contentReviews ContentReview[]
 
   @@unique([sessionId, sequence])
   @@unique([sessionId, agentId, idempotencyKey])
   @@index([campaignId, createdAt])
   @@index([agentId, createdAt])
   @@index([sessionId, sequence])
+}
+
+model ContentReview {
+  id            BigInt   @id @default(autoincrement()) @db.BigInt
+  campaignId    BigInt   @db.BigInt
+  characterId   BigInt?  @db.BigInt
+  eventId       BigInt?  @db.BigInt
+  accountId     BigInt?  @db.BigInt
+  agentId       BigInt?  @db.BigInt
+  surface       String   @db.VarChar(80)
+  subjectHash   String   @db.VarChar(64)
+  decision      String   @db.VarChar(64)
+  rightsBasis   String   @db.VarChar(32)
+  policyVersion String   @db.VarChar(64)
+  checkedAt     DateTime
+  evidence      Json
+  createdAt     DateTime @default(now())
+
+  campaign  Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  event     Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  account   Account?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  agent     Agent?     @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, createdAt])
+  @@index([characterId, createdAt])
+  @@index([agentId, createdAt])
+  @@index([surface, createdAt])
 }
 
 // Shared, atomic rate-limit counters. Keys are SHA-256 digests, never raw input.

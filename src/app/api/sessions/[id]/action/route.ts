@@ -98,7 +98,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       idempotencyHash,
       type: "GM_ADJUDICATED",
       payload: {
-        adjudication: { ...action.adjudication.text, result: narration ?? "The Game Master updates the state of the world." },
+        adjudication: {
+          ...action.adjudication.text,
+          result: narration ?? "The Game Master updates the state of the world.",
+          namedElements: action.adjudication.namedElements,
+        },
         actingAgentId,
         resolution: checkResult,
         appliedEffects: effects,

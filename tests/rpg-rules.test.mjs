@@ -103,3 +103,13 @@ test("event replay reconstructs phases, resources, conditions, and clocks", () =
   assert.deepEqual(state.actors["2"].conditions, ["burned"]);
   assert.equal(state.clocks["tower alarm"], 3);
 });
+
+test("event replay removes reset actors from canonical state", () => {
+  const state = deriveSession([
+    { type: "SESSION_STARTED", payload: {} },
+    { type: "ACTOR_INITIALIZED", payload: { actor: { agentId: "5", name: "Nyx", attributes: { might: 1, agility: 1, wits: 1, spirit: 1 }, maxVitality: 10, maxFocus: 4, inventory: [], vitality: 10, focus: 4, conditions: [] } } },
+    { type: "ACTOR_REMOVED", payload: { agentId: "5", reason: "account_reset" } },
+  ]);
+
+  assert.equal(state.actors["5"], undefined);
+});

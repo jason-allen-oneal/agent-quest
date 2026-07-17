@@ -31,6 +31,32 @@ export type Turn = {
   beats: ChronicleBeat[];
 };
 
+export type TableStatus = {
+  phase: "opening" | "awaiting_intent" | "awaiting_adjudication" | "stopped";
+  actorName: string | null;
+  responsibleName: string | null;
+  label: string;
+  detail: string;
+  sinceMs: number | null;
+};
+
+export type ChronicleScrollMetrics = {
+  scrollHeight: number;
+  scrollTop: number;
+  clientHeight: number;
+};
+
+/**
+ * Treat a small distance from the bottom as "latest" so touchpad rounding and
+ * fractional layout pixels do not accidentally disable live following.
+ */
+export function isChronicleNearBottom(
+  { scrollHeight, scrollTop, clientHeight }: ChronicleScrollMetrics,
+  threshold = 72,
+) {
+  return scrollHeight - scrollTop - clientHeight <= threshold;
+}
+
 const CHRONICLE_EVENT_TYPES = new Set([
   "SESSION_STARTED",
   "ACTOR_INITIALIZED",
@@ -209,6 +235,79 @@ function compareSequence(left: StreamEvent, right: StreamEvent) {
   }
 }
 
+export function deriveTableStatus(events: StreamEvent[]): TableStatus {
+  const ordered = [...events].sort(compareSequence);
+  const gm = ordered.find((event) => event.agent?.role === "gm")?.agent ?? null;
+  let actorNameValue: string | null = null;
+  let phase: TableStatus["phase"] = "opening";
+  let sinceMs: number | null = null;
+
+  for (const event of ordered) {
+    const payload = asRecord(event.payload);
+
+    if (event.type === "SESSION_STOPPED") {
+      phase = "stopped";
+      sinceMs = numberAt(payload, ["stoppedAtMs"]);
+      continue;
+    }
+
+    if (event.type === "TURN_ADVANCED") {
+      phase = stringAt(payload, ["phase"]) === "awaiting_adjudication"
+        ? "awaiting_adjudication"
+        : "awaiting_intent";
+      actorNameValue = actorName(event);
+      sinceMs = numberAt(payload, ["startedAtMs"]);
+      continue;
+    }
+
+    if (event.type === "ACTION_SUBMITTED") {
+      phase = "awaiting_adjudication";
+      actorNameValue = actorName(event);
+      sinceMs = numberAt(payload, ["submittedAtMs"])
+        ?? new Date(event.createdAt).getTime();
+    }
+  }
+
+  if (phase === "awaiting_adjudication") {
+    const responsibleName = gm?.name ?? "the Game Master";
+    const move = actorNameValue ? `${actorNameValue}'s move` : "the pending move";
+    return {
+      phase,
+      actorName: actorNameValue,
+      responsibleName,
+      label: `${responsibleName} must rule next`,
+      detail: `${responsibleName} needs to resolve ${move} before play can continue.`,
+      sinceMs,
+    };
+  }
+
+  if (phase === "awaiting_intent") {
+    const responsibleName = actorNameValue ?? "the active player";
+    return {
+      phase,
+      actorName: actorNameValue,
+      responsibleName,
+      label: `${responsibleName} acts next`,
+      detail: `${responsibleName} needs to declare a move before play can continue.`,
+      sinceMs,
+    };
+  }
+
+  if (phase === "stopped") {
+    return { phase, actorName: actorNameValue, responsibleName: null, label: "Session complete", detail: "No further action is required.", sinceMs };
+  }
+
+  const responsibleName = gm?.name ?? "the Game Master";
+  return {
+    phase,
+    actorName: null,
+    responsibleName,
+    label: `${responsibleName} opens the scene`,
+    detail: `${responsibleName} needs to frame the opening scene before play can continue.`,
+    sinceMs,
+  };
+}
+
 /**
  * Convert the append-only event log into the public chronicle. Internal events
  * stay in the audit stream; spectators see only meaningful story beats.
@@ -225,13 +324,15 @@ export function buildChronicleBeats(events: StreamEvent[]): ChronicleBeat[] {
 
     if (event.type === "ACTOR_INITIALIZED") {
       const actors = [actorName(event)];
+      let latestActorEvent = event;
       while (ordered[index + 1]?.type === "ACTOR_INITIALIZED") {
         index += 1;
-        actors.push(actorName(ordered[index]!));
+        latestActorEvent = ordered[index]!;
+        actors.push(actorName(latestActorEvent));
       }
       const names = joinNames(actors);
       beats.push({
-        event,
+        event: latestActorEvent,
         eyebrow: "The party assembles",
         title: actors.length === 1 ? `${names} enters the story` : "Adventurers enter the story",
         body: `${names} ${actors.length === 1 ? "is" : "are"} ready at the table.`,

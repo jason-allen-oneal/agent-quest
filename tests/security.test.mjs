@@ -3,7 +3,7 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import test from "node:test";
 import { authorizeAction, parseActionBody } from "../src/server/action-schema.ts";
 import { consumeApiKeyClaim } from "../src/server/claims.ts";
-import { issueRegistrationChallenge, parseRegistration, verifyRegistrationChallenge } from "../src/server/onboarding.ts";
+import { issueRegistrationChallenge, parseRegistration, planStartedCharacterUpsert, verifyRegistrationChallenge } from "../src/server/onboarding.ts";
 import { getClientIp } from "../src/server/rate-limit.ts";
 import { acquireStreamSlot } from "../src/server/session-stream.ts";
 import { autoJoinActiveCampaigns } from "../src/server/campaign-membership.ts";
@@ -20,6 +20,15 @@ test("registration proof binds the complete payload and expires", () => {
   assert.equal(verifyRegistrationChallenge(reg, challenge.token, signature, 1_001_000), true);
   assert.equal(verifyRegistrationChallenge({ ...reg, role: "gm" }, challenge.token, signature, 1_001_000), false);
   assert.equal(verifyRegistrationChallenge(reg, challenge.token, signature, 1_400_001), false);
+});
+
+test("started campaign recovery can initialize a manually restored empty player seat", () => {
+  assert.equal(planStartedCharacterUpsert({ role: "player", sessionStatus: "active", characterId: null, actorInitialized: false }), "create");
+  assert.equal(planStartedCharacterUpsert({ role: "player", sessionStatus: "active", characterId: 12n, actorInitialized: true }), "replace");
+  assert.throws(
+    () => planStartedCharacterUpsert({ role: "player", sessionStatus: "active", characterId: 12n, actorInitialized: false }),
+    (error) => error instanceof Response && error.status === 409,
+  );
 });
 
 test("action schema rejects arbitrary nested JSON and oversized text", () => {
@@ -50,12 +59,21 @@ test("campaign creation requires a rights attestation and pins the server conten
     maxPlayers: 5,
     rightsAttested: true,
     rightsBasis: "original",
+    ipScreening: {
+      checkedAt: new Date().toISOString(),
+      queries: ["Ashen Vale", "Ashen Vale trademark", '"Ashen Vale" game OR novel'],
+      sources: [
+        { kind: "uspto-federal", query: "Ashen Vale", reference: "https://www.uspto.gov/trademarks/search", result: "no-obvious-conflict" },
+        { kind: "web-search", query: '"Ashen Vale" game OR novel', reference: "https://www.google.com/search?q=%22Ashen%20Vale%22+game+OR+novel", result: "no-obvious-conflict" },
+      ],
+      notes: "Current exact and similar-name searches found no obvious conflict in the recorded sources.",
+    },
     settings: { genre: "gothic fantasy" },
   });
-  assert.equal(campaign.settings.contentPolicy.version, "original-or-authorized-v1");
-  assert.equal(campaign.settings.contentPolicy.rightsAttested, true);
-  assert.equal(campaign.minPlayers, 2);
-  assert.equal(campaign.maxPlayers, 5);
+  assert.equal(campaign.data.settings.contentPolicy.version, "original-or-authorized-v2");
+  assert.equal(campaign.data.settings.contentPolicy.rightsAttested, true);
+  assert.equal(campaign.data.minPlayers, 2);
+  assert.equal(campaign.data.maxPlayers, 5);
   assert.throws(() => parseCampaignCreateBody({
     name: "Broken Roster",
     description: "An original campaign description long enough to pass validation.",

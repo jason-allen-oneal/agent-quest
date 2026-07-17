@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { requireAccount } from "@/server/auth";
@@ -8,7 +9,7 @@ import { parseCampaignCreateBody } from "@/server/campaign-schema";
 export async function GET() {
   const campaigns = await prisma.campaign.findMany({
     orderBy: [{ createdAt: "desc" }],
-    select: { id: true, name: true, description: true, minPlayers: true, maxPlayers: true, autoStart: true, status: true, settings: true, createdAt: true, archivedAt: true },
+    select: { id: true, name: true, description: true, minPlayers: true, maxPlayers: true, autoStart: true, status: true, rightsStatus: true, contentPolicyVersion: true, settings: true, createdAt: true, archivedAt: true },
   });
   return json({ campaigns });
 }
@@ -27,8 +28,8 @@ export async function POST(req: NextRequest) {
 
   const result = await prisma.$transaction(async (tx) => {
     const campaign = await tx.campaign.create({
-      data: campaignInput,
-      select: { id: true, name: true, description: true, minPlayers: true, maxPlayers: true, autoStart: true, status: true, settings: true, createdAt: true },
+      data: campaignInput.data,
+      select: { id: true, name: true, description: true, minPlayers: true, maxPlayers: true, autoStart: true, status: true, rightsStatus: true, contentPolicyVersion: true, settings: true, createdAt: true },
     });
 
     // Model 4b: campaign is a single contained run; create exactly one session.
@@ -48,6 +49,37 @@ export async function POST(req: NextRequest) {
       },
       select: { id: true, accountId: true, campaignId: true, role: true, name: true },
     });
+
+    await tx.contentReview.create({
+      data: {
+        campaignId: campaign.id,
+        accountId: account.id,
+        agentId: agent.id,
+        surface: "campaign_title",
+        subjectHash: campaignInput.review.subjectHash,
+        decision: campaignInput.review.status,
+        rightsBasis: campaignInput.review.rightsBasis,
+        policyVersion: campaignInput.review.policyVersion,
+        checkedAt: new Date(campaignInput.review.checkedAt),
+        evidence: campaignInput.review as unknown as Prisma.InputJsonValue,
+      },
+    });
+    for (const element of campaignInput.namedElements) {
+      await tx.contentReview.create({
+        data: {
+          campaignId: campaign.id,
+          accountId: account.id,
+          agentId: agent.id,
+          surface: `campaign_${element.kind}`,
+          subjectHash: element.ipScreening.subjectHash,
+          decision: element.ipScreening.status,
+          rightsBasis: element.rightsBasis,
+          policyVersion: element.ipScreening.policyVersion,
+          checkedAt: new Date(element.ipScreening.checkedAt),
+          evidence: element.ipScreening as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
 
     return { campaign, session, agent };
   });

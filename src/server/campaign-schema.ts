@@ -1,19 +1,30 @@
 import type { Prisma } from "@prisma/client";
 import { assertContentPolicy, assertJsonTextContentPolicy, CONTENT_POLICY_VERSION } from "./content-policy.ts";
-
-const RIGHTS_BASES = new Set(["original", "licensed", "public-domain", "permission", "mixed"]);
+import {
+  parseIpScreeningEvidence,
+  parseRightsBasis,
+  parseScreenedNamedElements,
+  type IpScreeningEvidence,
+  type ScreenedNamedElement,
+} from "./ip-screening.ts";
 
 export type CampaignCreate = {
-  name: string;
-  description: string;
-  minPlayers: number;
-  maxPlayers: number;
-  autoStart: boolean;
-  settings: Prisma.InputJsonObject;
+  data: {
+    name: string;
+    description: string;
+    minPlayers: number;
+    maxPlayers: number;
+    autoStart: boolean;
+    rightsStatus: string;
+    contentPolicyVersion: string;
+    settings: Prisma.InputJsonObject;
+  };
+  review: IpScreeningEvidence;
+  namedElements: ScreenedNamedElement[];
 };
 
 export function parseCampaignCreateBody(body: Record<string, unknown>): CampaignCreate {
-  if (Object.keys(body).some((key) => !["name", "description", "minPlayers", "maxPlayers", "autoStart", "settings", "rightsAttested", "rightsBasis"].includes(key))) {
+  if (Object.keys(body).some((key) => !["name", "description", "minPlayers", "maxPlayers", "autoStart", "settings", "rightsAttested", "rightsBasis", "ipScreening", "namedElements"].includes(key))) {
     throw new Response("Unknown campaign fields", { status: 400 });
   }
   if (body.rightsAttested !== true) {
@@ -25,7 +36,7 @@ export function parseCampaignCreateBody(body: Record<string, unknown>): Campaign
 
   const name = String(body.name ?? "Untitled Campaign").trim();
   if (!name || name.length > 200) throw new Response("name must be 1-200 characters", { status: 400 });
-  assertContentPolicy(name, "campaign name");
+  assertContentPolicy(name, "campaign name", "identifier");
 
   const description = String(body.description ?? "").trim();
   if (description.length < 20 || description.length > 2000) {
@@ -45,10 +56,13 @@ export function parseCampaignCreateBody(body: Record<string, unknown>): Campaign
     throw new Response("autoStart must be a boolean", { status: 400 });
   }
 
-  const rightsBasis = String(body.rightsBasis ?? "original");
-  if (!RIGHTS_BASES.has(rightsBasis)) {
-    throw new Response("rightsBasis must be original|licensed|public-domain|permission|mixed", { status: 400 });
-  }
+  const rightsBasis = parseRightsBasis(body.rightsBasis);
+  const ipScreening = parseIpScreeningEvidence(body.ipScreening, {
+    subject: name,
+    rightsBasis,
+    label: "ipScreening",
+  });
+  const namedElements = parseScreenedNamedElements(body.namedElements, "namedElements");
 
   const rawSettings = body.settings ?? {};
   if (!rawSettings || typeof rawSettings !== "object" || Array.isArray(rawSettings)) {
@@ -61,18 +75,26 @@ export function parseCampaignCreateBody(body: Record<string, unknown>): Campaign
   assertJsonTextContentPolicy(settings, "campaign settings");
 
   return {
-    name,
-    description,
-    minPlayers: Number(minPlayers),
-    maxPlayers: Number(maxPlayers),
-    autoStart: body.autoStart !== false,
-    settings: {
-      ...(settings as Prisma.InputJsonObject),
-      contentPolicy: {
-        version: CONTENT_POLICY_VERSION,
-        rightsAttested: true,
-        rightsBasis,
+    data: {
+      name,
+      description,
+      minPlayers: Number(minPlayers),
+      maxPlayers: Number(maxPlayers),
+      autoStart: body.autoStart !== false,
+      rightsStatus: ipScreening.status,
+      contentPolicyVersion: CONTENT_POLICY_VERSION,
+      settings: {
+        ...(settings as Prisma.InputJsonObject),
+        contentPolicy: {
+          version: CONTENT_POLICY_VERSION,
+          rightsAttested: true,
+          rightsBasis,
+          ipScreening,
+          namedElements,
+        },
       },
     },
+    review: ipScreening,
+    namedElements,
   };
 }

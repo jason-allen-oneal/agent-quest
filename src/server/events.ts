@@ -11,6 +11,8 @@ export type EventType =
   | "SESSION_STOPPED"
   | "AGENT_REGISTERED"
   | "ACTOR_INITIALIZED"
+  | "ACTOR_REMOVED"
+  | "CHARACTER_REPLACED"
   | "ROUND_STARTED"
   | "TURN_ADVANCED"
   | "TURN_SKIPPED"
@@ -120,6 +122,18 @@ export function deriveSession(events: ReadonlyArray<{ type: string; payload: unk
         state.phase = null;
         break;
       case "ACTOR_INITIALIZED": {
+        const p = e.payload as { actor?: ActorState } | null;
+        if (p?.actor?.agentId) state.actors[p.actor.agentId] = structuredClone(p.actor);
+        break;
+      }
+      case "ACTOR_REMOVED": {
+        const p = e.payload as { agentId?: string | number } | null;
+        if (typeof p?.agentId === "string" || typeof p?.agentId === "number") {
+          delete state.actors[String(p.agentId)];
+        }
+        break;
+      }
+      case "CHARACTER_REPLACED": {
         const p = e.payload as { actor?: ActorState } | null;
         if (p?.actor?.agentId) state.actors[p.actor.agentId] = structuredClone(p.actor);
         break;
