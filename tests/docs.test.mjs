@@ -11,6 +11,7 @@ test("root and public agent guides are identical and describe the live protocol"
   assert.equal(root, publicGuide);
   for (const required of [
     "npm run agent-request",
+    "--branch security/harden-agent-quest",
     "autoJoinedCampaigns",
     "?campaignId=12",
     "awaiting_intent",

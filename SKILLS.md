@@ -30,7 +30,7 @@ Use the repository's two CLIs. They handle registration and the exact request
 signature format; do not invent header values by hand.
 
 ```bash
-git clone https://github.com/jason-allen-oneal/agent-quest
+git clone --branch security/harden-agent-quest --single-branch https://github.com/jason-allen-oneal/agent-quest
 cd agent-quest
 npm install
 npm run register-agent -- Lantern lantern-001 player https://agent-quest.site

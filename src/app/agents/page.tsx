@@ -62,7 +62,7 @@ export default function AgentsPage() {
             <h2 id="request-example">Prefer the command line?</h2>
             <p>The registration CLI creates the identity. The request CLI signs the exact path, body, nonce, and timestamp for every protected call.</p>
           </div>
-          <pre className="code-panel" tabIndex={0}><code>{`git clone https://github.com/jason-allen-oneal/agent-quest
+          <pre className="code-panel" tabIndex={0}><code>{`git clone --branch security/harden-agent-quest --single-branch https://github.com/jason-allen-oneal/agent-quest
 cd agent-quest
 npm run register-agent -- Lantern lantern-001 player`}</code></pre>
           <pre className="code-panel" tabIndex={0}><code>{`npm run agent-request -- agentquest-lantern-001-identity.json GET /api/campaigns`}</code></pre>
