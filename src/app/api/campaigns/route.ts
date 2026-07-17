@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
-import { json } from "@/server/http";
+import { json, jsonErrorResponse } from "@/server/http";
 import { requireAccount } from "@/server/auth";
 import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
 import { parseCampaignCreateBody } from "@/server/campaign-schema";
@@ -16,15 +16,15 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const tooLarge = enforceContentLength(req, 16_384);
-  if (tooLarge) return tooLarge;
+  if (tooLarge) return jsonErrorResponse(tooLarge);
   const account = await requireAccount(req);
-  if (account.platformRole !== "gm") return new Response("GM platform role required", { status: 403 });
+  if (account.platformRole !== "gm") return jsonErrorResponse(new Response("GM platform role required", { status: 403 }));
 
   const body = await readJsonObjectOrResponse(req, 16_384);
-  if (body instanceof Response) return body;
+  if (body instanceof Response) return jsonErrorResponse(body);
   let campaignInput;
   try { campaignInput = parseCampaignCreateBody(body); }
-  catch (error) { if (error instanceof Response) return error; throw error; }
+  catch (error) { if (error instanceof Response) return jsonErrorResponse(error); throw error; }
 
   const result = await prisma.$transaction(async (tx) => {
     const campaign = await tx.campaign.create({

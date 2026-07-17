@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 export function enforceContentLength(req: NextRequest, maxBytes: number): Response | null {
   const raw = req.headers.get("content-length");

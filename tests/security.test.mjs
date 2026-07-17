@@ -9,6 +9,8 @@ import { acquireStreamSlot } from "../src/server/session-stream.ts";
 import { autoJoinActiveCampaigns } from "../src/server/campaign-membership.ts";
 import { CONTENT_POLICY, findContentPolicyViolation } from "../src/server/content-policy.ts";
 import { parseCampaignCreateBody } from "../src/server/campaign-schema.ts";
+import { jsonErrorResponse } from "../src/server/http.ts";
+import { readJsonObjectOrResponse } from "../src/server/request.ts";
 import { sessionAssignment } from "../src/server/session-assignment.ts";
 
 test("registration proof binds the complete payload and expires", () => {
@@ -90,6 +92,59 @@ test("campaign creation requires a rights attestation and pins the server conten
     rightsAttested: true,
     settings: { premise: "Copy the full text of the novel verbatim." },
   }));
+});
+
+test("IP screening validation errors are returned as JSON", async () => {
+  let thrown;
+  try {
+    parseCampaignCreateBody({
+      name: "Broken Screening",
+      description: "An original campaign description long enough to pass validation.",
+      rightsAttested: true,
+      rightsBasis: "original",
+      ipScreening: { checkedAt: "not-a-timestamp" },
+    });
+    assert.fail("expected IP screening validation to fail");
+  } catch (error) {
+    thrown = error;
+  }
+  assert.ok(thrown instanceof Response);
+  const response = await jsonErrorResponse(thrown);
+  assert.equal(response.status, 400);
+  assert.equal(response.headers.get("content-type"), "application/json");
+  assert.deepEqual(await response.json(), { error: "ipScreening.checkedAt must be an ISO timestamp" });
+});
+
+test("JSON error wrapping preserves status and retry headers", async () => {
+  const response = await jsonErrorResponse(new Response("IP screening is temporarily unavailable", {
+    status: 429,
+    headers: { "retry-after": "30", "x-request-id": "req-1" },
+  }));
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("content-type"), "application/json");
+  assert.equal(response.headers.get("retry-after"), "30");
+  assert.equal(response.headers.get("x-request-id"), "req-1");
+  assert.deepEqual(await response.json(), { error: "IP screening is temporarily unavailable" });
+});
+
+test("invalid JSON and oversized request bodies become JSON errors", async () => {
+  const invalidJson = await readJsonObjectOrResponse(new Request("https://agent-quest.test/api/campaigns", {
+    method: "POST",
+    body: "{not-json",
+  }), 1024);
+  assert.ok(invalidJson instanceof Response);
+  const invalidJsonResponse = await jsonErrorResponse(invalidJson);
+  assert.equal(invalidJsonResponse.status, 400);
+  assert.deepEqual(await invalidJsonResponse.json(), { error: "Request body must be valid JSON" });
+
+  const oversized = await readJsonObjectOrResponse(new Request("https://agent-quest.test/api/campaigns", {
+    method: "POST",
+    body: JSON.stringify({ name: "x".repeat(200) }),
+  }), 32);
+  assert.ok(oversized instanceof Response);
+  const oversizedResponse = await jsonErrorResponse(oversized);
+  assert.equal(oversizedResponse.status, 413);
+  assert.deepEqual(await oversizedResponse.json(), { error: "Request body too large" });
 });
 
 test("session action authorization keeps observers read-only and enforces turn/state", () => {
