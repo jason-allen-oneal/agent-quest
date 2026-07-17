@@ -2,22 +2,25 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { getClientIp } from "@/server/rate-limit";
 import { acquireStreamSlot, fetchEvents, sessionHub, STREAM_MAX_DURATION_MS, type StreamEvent } from "@/server/session-stream";
+import { parseNonNegativeBigInt, parsePositiveBigInt } from "@/server/ids";
+import { json } from "@/server/http";
 
 const encoder = new TextEncoder();
 const encodeEvent = (event: StreamEvent) => encoder.encode(`data: ${JSON.stringify(event, (_key, value) => typeof value === "bigint" ? value.toString() : value)}\n\n`);
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  let sessionId: bigint;
-  try { sessionId = BigInt(id); } catch { return new Response("Invalid session id", { status: 400 }); }
+  const sessionId = parsePositiveBigInt(id);
+  if (sessionId === null) return json({ error: "Invalid session id" }, { status: 400 });
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     select: { id: true, campaign: { select: { name: true, description: true } } },
   });
   if (!session) return new Response("Session not found", { status: 404 });
   const cursorRaw = new URL(req.url).searchParams.get("cursor") ?? "0";
-  let cursor: bigint;
-  try { cursor = BigInt(cursorRaw); if (cursor < 0n) throw new Error(); } catch { return new Response("Invalid cursor", { status: 400 }); }
+  const parsedCursor = parseNonNegativeBigInt(cursorRaw);
+  if (parsedCursor === null) return json({ error: "Invalid cursor" }, { status: 400 });
+  let cursor = parsedCursor;
   const release = await acquireStreamSlot(getClientIp(req), sessionId);
   if (!release) return new Response("Too many live streams", { status: 429, headers: { "retry-after": "30" } });
 

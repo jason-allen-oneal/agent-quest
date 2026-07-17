@@ -12,34 +12,6 @@ export type Registration = {
   keyId: string;
 };
 
-export type StartedCharacterUpsertMode = "create" | "replace";
-
-/**
- * Decide whether an initialized player seat can attach character data after a
- * campaign has started. This is the durable re-entry path for a seat restored
- * without its old Character row. A manually restored player seat may initialize
- * its missing actor exactly once. Existing actors still require a replacement path so a membership
- * alone cannot silently overwrite live state.
- */
-export function planStartedCharacterUpsert(input: {
-  role: Registration["role"];
-  sessionStatus: "created" | "active" | "paused" | "stopped";
-  characterId: bigint | null;
-  actorInitialized: boolean;
-}): StartedCharacterUpsertMode {
-  if (input.role !== "player") throw new Response("Player role required", { status: 403 });
-  if (input.sessionStatus === "created") {
-    throw new Response("Use character creation before session start", { status: 409 });
-  }
-  if (input.sessionStatus === "stopped") {
-    throw new Response("Cannot change a character in a stopped session", { status: 409 });
-  }
-  if (!input.actorInitialized && input.characterId !== null) {
-    throw new Response("Player actor is not initialized", { status: 409 });
-  }
-  return input.characterId === null ? "create" : "replace";
-}
-
 function challengeSecret(): string {
   const secret = process.env.AQ_ONBOARDING_CHALLENGE_SECRET;
   if (!secret || secret.length < 32) throw new Error("AQ_ONBOARDING_CHALLENGE_SECRET must be at least 32 characters");

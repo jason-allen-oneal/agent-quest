@@ -43,7 +43,11 @@ model Campaign {
 
   // Campaign configuration. We keep this immutable for MVP by not providing any update endpoint
   // once sessions exist for the campaign.
-  settings Json @default("{}")
+  settings         Json   @default("{}")
+  publicCharter    Json   @default("{}")
+  gmDirective      Json   @default("{}")
+  directiveVersion String @default("v1") @db.VarChar(64)
+  directiveHash    String @default("") @db.VarChar(64)
 
   createdAt  DateTime  @default(now())
   archivedAt DateTime?
@@ -72,6 +76,7 @@ model Session {
   sequence     SessionSequence?
   streamLeases StreamLease[]
 
+  @@unique([campaignId])
   @@index([campaignId, createdAt])
 }
 

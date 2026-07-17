@@ -9,14 +9,15 @@ import { rateLimitMany } from "@/server/rate-limit";
 import { sha256Hex } from "@/server/crypto";
 import { rollCheck } from "@/server/rpg-rules";
 import { nextTurn, orderedTurnActors } from "@/server/turns";
+import { parsePositiveBigInt } from "@/server/ids";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const tooLarge = enforceContentLength(req, 8192);
     if (tooLarge) return tooLarge;
     const { id } = await ctx.params;
-    let sessionId: bigint;
-    try { sessionId = BigInt(id); } catch { return new Response("Invalid session id", { status: 400 }); }
+    const sessionId = parsePositiveBigInt(id);
+    if (sessionId === null) return json({ error: "Invalid session id" }, { status: 400 });
     const clientIdempotencyKey = requireIdempotencyKey(req);
     const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { campaignId: true, status: true } });
     if (!session) return new Response("Session not found", { status: 404 });

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { requireAdmin } from "@/server/admin";
+import { parsePositiveBigInt } from "@/server/ids";
 import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -10,8 +11,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   requireAdmin(req, { csrf: true });
 
   const { id } = await ctx.params;
-  let accessRequestId: bigint;
-  try { accessRequestId = BigInt(id); } catch { return new Response("Invalid access request id", { status: 400 }); }
+    const accessRequestId = parsePositiveBigInt(id);
+    if (accessRequestId === null) return new Response("Invalid access request id", { status: 400 });
 
   const body = await readJsonObjectOrResponse(req, 4_096);
   if (body instanceof Response) return body;

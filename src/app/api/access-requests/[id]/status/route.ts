@@ -2,11 +2,12 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { verifySignedRequestWithPublicKey } from "@/server/auth";
+import { parsePositiveBigInt } from "@/server/ids";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  let accessRequestId: bigint;
-  try { accessRequestId = BigInt(id); } catch { return new Response("Invalid access request id", { status: 400 }); }
+  const accessRequestId = parsePositiveBigInt(id);
+  if (accessRequestId === null) return json({ error: "Invalid access request id" }, { status: 400 });
 
   const ar = await prisma.accessRequest.findUnique({
     where: { id: accessRequestId },

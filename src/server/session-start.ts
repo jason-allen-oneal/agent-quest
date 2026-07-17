@@ -1,5 +1,5 @@
 import { prisma } from "./db.ts";
-import { appendEvents, type AppendEventInput } from "./events.ts";
+import { appendEventsInTransaction, type AppendEventInput } from "./events.ts";
 import { parseStoredCharacterSheet } from "./rpg-rules.ts";
 import { orderedTurnActors } from "./turns.ts";
 
@@ -58,76 +58,78 @@ export function evaluateAutoStartReadiness(configuration: unknown, members: Read
 }
 
 export async function startSession(sessionId: bigint, initiatingGmAgentId: bigint) {
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: { id: true, campaignId: true, status: true },
-  });
-  if (!session) throw new Response("Session not found", { status: 404 });
-  if (session.status === "active") return { ok: true, session, idempotent: true };
-  if (session.status !== "created" && session.status !== "paused") {
-    throw new Response("Stopped sessions cannot be restarted", { status: 409 });
-  }
-
-  const previousStatus = session.status;
-  const now = Date.now();
-  const events: AppendEventInput[] = [{
-    campaignId: session.campaignId,
-    sessionId,
-    agentId: initiatingGmAgentId,
-    idempotencyKey: previousStatus === "created" ? "session-started" : `session-resumed-${now}`,
-    type: "SESSION_STARTED",
-    payload: { startedAtMs: now },
-  }];
-
-  if (previousStatus === "created") {
-    const members = await prisma.agent.findMany({
-      where: { campaignId: session.campaignId, role: { in: ["gm", "player"] } },
-      select: { id: true, role: true, name: true, character: { select: { name: true, sheet: true } } },
+  return prisma.$transaction(async (tx) => {
+    const session = await tx.session.findUnique({
+      where: { id: sessionId },
+      select: { id: true, campaignId: true, status: true },
     });
-    const order = orderedTurnActors(members.map((member) => ({ id: member.id, role: member.role as "gm" | "player" })));
-    const gm = order.find((member) => member.role === "gm");
-    if (!gm) throw new Response("A GM is required to start the session", { status: 409 });
-    if (gm.id !== initiatingGmAgentId) throw new Response("Initiating agent is not this campaign's GM", { status: 403 });
-
-    for (const member of members.filter((candidate) => candidate.role === "player")) {
-      if (!member.character) throw new Response(`Player ${member.id} must create a character before session start`, { status: 409 });
-      const sheet = parseStoredCharacterSheet(member.character.sheet);
-      events.push({
-        campaignId: session.campaignId,
-        sessionId,
-        agentId: member.id,
-        type: "ACTOR_INITIALIZED",
-        payload: {
-          actor: {
-            agentId: member.id.toString(),
-            name: member.character.name ?? member.name,
-            ...sheet,
-            vitality: sheet.maxVitality,
-            focus: sheet.maxFocus,
-            conditions: [],
-          },
-        },
-      });
+    if (!session) throw new Response("Session not found", { status: 404 });
+    if (session.status === "active") return { ok: true, session, idempotent: true };
+    if (session.status !== "created" && session.status !== "paused") {
+      throw new Response("Stopped sessions cannot be restarted", { status: 409 });
     }
-    events.push(
-      { campaignId: session.campaignId, sessionId, agentId: initiatingGmAgentId, type: "ROUND_STARTED", payload: { roundNumber: 1, startedAtMs: now } },
-      {
-        campaignId: session.campaignId,
-        sessionId,
-        agentId: gm.id,
-        type: "TURN_ADVANCED",
-        payload: { turnNumber: 1, roundNumber: 1, agentId: gm.id.toString(), phase: "awaiting_adjudication", startedAtMs: now, reason: "session_started" },
-      },
-    );
-  }
 
-  const transitioned = await prisma.session.updateMany({
-    where: { id: sessionId, status: previousStatus },
-    data: { status: "active", startedAt: new Date() },
+    const previousStatus = session.status;
+    const now = Date.now();
+    const events: AppendEventInput[] = [{
+      campaignId: session.campaignId,
+      sessionId,
+      agentId: initiatingGmAgentId,
+      idempotencyKey: previousStatus === "created" ? "session-started" : undefined,
+      type: "SESSION_STARTED",
+      payload: { startedAtMs: now },
+    }];
+
+    if (previousStatus === "created") {
+      const members = await tx.agent.findMany({
+        where: { campaignId: session.campaignId, role: { in: ["gm", "player"] } },
+        select: { id: true, role: true, name: true, character: { select: { name: true, sheet: true } } },
+      });
+      const order = orderedTurnActors(members.map((member) => ({ id: member.id, role: member.role as "gm" | "player" })));
+      const gm = order.find((member) => member.role === "gm");
+      if (!gm) throw new Response("A GM is required to start the session", { status: 409 });
+      if (gm.id !== initiatingGmAgentId) throw new Response("Initiating agent is not this campaign's GM", { status: 403 });
+
+      for (const member of members.filter((candidate) => candidate.role === "player")) {
+        if (!member.character) throw new Response(`Player ${member.id} must create a character before session start`, { status: 409 });
+        const sheet = parseStoredCharacterSheet(member.character.sheet);
+        events.push({
+          campaignId: session.campaignId,
+          sessionId,
+          agentId: member.id,
+          type: "ACTOR_INITIALIZED",
+          payload: {
+            actor: {
+              agentId: member.id.toString(),
+              name: member.character.name ?? member.name,
+              ...sheet,
+              vitality: sheet.maxVitality,
+              focus: sheet.maxFocus,
+              conditions: [],
+            },
+          },
+        });
+      }
+      events.push(
+        { campaignId: session.campaignId, sessionId, agentId: initiatingGmAgentId, type: "ROUND_STARTED", payload: { roundNumber: 1, startedAtMs: now } },
+        {
+          campaignId: session.campaignId,
+          sessionId,
+          agentId: gm.id,
+          type: "TURN_ADVANCED",
+          payload: { turnNumber: 1, roundNumber: 1, agentId: gm.id.toString(), phase: "awaiting_adjudication", startedAtMs: now, reason: "session_started" },
+        },
+      );
+    }
+
+    const transitioned = await tx.session.updateMany({
+      where: { id: sessionId, status: previousStatus },
+      data: { status: "active", startedAt: new Date(now) },
+    });
+    if (transitioned.count !== 1) return { ok: true, idempotent: true };
+    await appendEventsInTransaction(tx, events);
+    return { ok: true, sessionId, idempotent: false };
   });
-  if (transitioned.count !== 1) return { ok: true, idempotent: true };
-  await appendEvents(events);
-  return { ok: true, sessionId, idempotent: false };
 }
 
 export async function maybeAutoStartCampaign(campaignId: bigint) {

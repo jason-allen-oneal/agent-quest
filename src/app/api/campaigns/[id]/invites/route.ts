@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { sha256Hex } from "@/server/crypto";
 import { requireAgentForCampaign } from "@/server/auth";
+import { parsePositiveBigInt } from "@/server/ids";
 
 function makeInviteCode(): string {
   return crypto.randomBytes(18).toString("base64url");
@@ -18,7 +19,8 @@ function makeInviteCode(): string {
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const campaignId = BigInt(id);
+  const campaignId = parsePositiveBigInt(id);
+  if (campaignId === null) return json({ error: "Invalid campaign id" }, { status: 400 });
 
   const gm = await requireAgentForCampaign(req, campaignId);
   if (gm.role !== "gm") return new Response("GM role required", { status: 403 });

@@ -3,13 +3,15 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import test from "node:test";
 import { authorizeAction, parseActionBody } from "../src/server/action-schema.ts";
 import { consumeApiKeyClaim } from "../src/server/claims.ts";
-import { issueRegistrationChallenge, parseRegistration, planStartedCharacterUpsert, verifyRegistrationChallenge } from "../src/server/onboarding.ts";
+import { issueRegistrationChallenge, parseRegistration, verifyRegistrationChallenge } from "../src/server/onboarding.ts";
 import { getClientIp } from "../src/server/rate-limit.ts";
 import { acquireStreamSlot } from "../src/server/session-stream.ts";
 import { autoJoinActiveCampaigns } from "../src/server/campaign-membership.ts";
 import { CONTENT_POLICY, findContentPolicyViolation } from "../src/server/content-policy.ts";
 import { parseCampaignCreateBody } from "../src/server/campaign-schema.ts";
+import { campaignDirectiveHash, stableJson } from "../src/server/campaign-directives.ts";
 import { jsonErrorResponse } from "../src/server/http.ts";
+import { parseNonNegativeBigInt, parsePositiveBigInt } from "../src/server/ids.ts";
 import { readJsonObjectOrResponse } from "../src/server/request.ts";
 import { sessionAssignment } from "../src/server/session-assignment.ts";
 
@@ -22,15 +24,6 @@ test("registration proof binds the complete payload and expires", () => {
   assert.equal(verifyRegistrationChallenge(reg, challenge.token, signature, 1_001_000), true);
   assert.equal(verifyRegistrationChallenge({ ...reg, role: "gm" }, challenge.token, signature, 1_001_000), false);
   assert.equal(verifyRegistrationChallenge(reg, challenge.token, signature, 1_400_001), false);
-});
-
-test("started campaign recovery can initialize a manually restored empty player seat", () => {
-  assert.equal(planStartedCharacterUpsert({ role: "player", sessionStatus: "active", characterId: null, actorInitialized: false }), "create");
-  assert.equal(planStartedCharacterUpsert({ role: "player", sessionStatus: "active", characterId: 12n, actorInitialized: true }), "replace");
-  assert.throws(
-    () => planStartedCharacterUpsert({ role: "player", sessionStatus: "active", characterId: 12n, actorInitialized: false }),
-    (error) => error instanceof Response && error.status === 409,
-  );
 });
 
 test("action schema rejects arbitrary nested JSON and oversized text", () => {
@@ -79,6 +72,8 @@ test("campaign creation requires a rights attestation and pins the server conten
   assert.equal(campaign.data.settings.contentPolicy.rightsAttested, true);
   assert.equal(campaign.data.minPlayers, 2);
   assert.equal(campaign.data.maxPlayers, 5);
+  assert.equal(campaign.data.directiveVersion, "v1");
+  assert.equal(campaign.data.directiveHash, campaignDirectiveHash({ version: "v1", publicCharter: {}, gmDirective: {} }));
   assert.throws(() => parseCampaignCreateBody({
     name: "Broken Roster",
     description: "An original campaign description long enough to pass validation.",
@@ -92,6 +87,41 @@ test("campaign creation requires a rights attestation and pins the server conten
     rightsAttested: true,
     settings: { premise: "Copy the full text of the novel verbatim." },
   }));
+});
+
+test("campaign directives are hash-bound and public/private data stays structured", () => {
+  const publicCharter = { premise: "A signal cuts through the flooded dark." };
+  const gmDirective = { hiddenTruth: "The signal is a damaged archive.", clocks: ["rising water"] };
+  const campaign = parseCampaignCreateBody({
+    name: "Directive Test",
+    description: "An original campaign with a stored public charter and private GM spine.",
+    rightsAttested: true,
+    rightsBasis: "original",
+    ipScreening: {
+      checkedAt: new Date().toISOString(),
+      queries: ["Directive Test", "Directive Test trademark"],
+      sources: [
+        { kind: "uspto-federal", query: "Directive Test", reference: "https://www.uspto.gov/trademarks/search", result: "no-obvious-conflict" },
+        { kind: "web-search", query: "Directive Test trademark", reference: "https://www.google.com/search?q=Directive+Test+trademark", result: "no-obvious-conflict" },
+      ],
+      notes: "Current searches found no obvious conflict for this original campaign title.",
+    },
+    directiveVersion: "test-v1",
+    publicCharter,
+    gmDirective,
+  });
+  assert.equal(stableJson({ b: 1, a: 2 }), '{"a":2,"b":1}');
+  assert.equal(campaign.data.directiveHash, campaignDirectiveHash({ version: "test-v1", publicCharter, gmDirective }));
+  assert.deepEqual(campaign.data.publicCharter, publicCharter);
+  assert.deepEqual(campaign.data.gmDirective, gmDirective);
+});
+
+test("public identifiers reject malformed and negative values", () => {
+  assert.equal(parsePositiveBigInt("12"), 12n);
+  assert.equal(parsePositiveBigInt("0"), null);
+  assert.equal(parsePositiveBigInt("not-an-id"), null);
+  assert.equal(parseNonNegativeBigInt("0"), 0n);
+  assert.equal(parseNonNegativeBigInt("-1"), null);
 });
 
 test("IP screening validation errors are returned as JSON", async () => {

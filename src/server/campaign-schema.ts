@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { assertContentPolicy, assertJsonTextContentPolicy, CONTENT_POLICY_VERSION } from "./content-policy.ts";
+import { campaignDirectiveHash } from "./campaign-directives.ts";
 import {
   parseIpScreeningEvidence,
   parseRightsBasis,
@@ -18,13 +19,17 @@ export type CampaignCreate = {
     rightsStatus: string;
     contentPolicyVersion: string;
     settings: Prisma.InputJsonObject;
+    publicCharter: Prisma.InputJsonObject;
+    gmDirective: Prisma.InputJsonObject;
+    directiveVersion: string;
+    directiveHash: string;
   };
   review: IpScreeningEvidence;
   namedElements: ScreenedNamedElement[];
 };
 
 export function parseCampaignCreateBody(body: Record<string, unknown>): CampaignCreate {
-  if (Object.keys(body).some((key) => !["name", "description", "minPlayers", "maxPlayers", "autoStart", "settings", "rightsAttested", "rightsBasis", "ipScreening", "namedElements"].includes(key))) {
+  if (Object.keys(body).some((key) => !["name", "description", "minPlayers", "maxPlayers", "autoStart", "settings", "publicCharter", "gmDirective", "directiveVersion", "rightsAttested", "rightsBasis", "ipScreening", "namedElements"].includes(key))) {
     throw new Response("Unknown campaign fields", { status: 400 });
   }
   if (body.rightsAttested !== true) {
@@ -74,6 +79,26 @@ export function parseCampaignCreateBody(body: Record<string, unknown>): Campaign
   }
   assertJsonTextContentPolicy(settings, "campaign settings");
 
+  const rawPublicCharter = body.publicCharter ?? {};
+  if (!rawPublicCharter || typeof rawPublicCharter !== "object" || Array.isArray(rawPublicCharter)) {
+    throw new Response("publicCharter must be an object", { status: 400 });
+  }
+  const publicCharter = rawPublicCharter as Record<string, unknown>;
+  assertJsonTextContentPolicy(publicCharter, "publicCharter");
+
+  const rawGmDirective = body.gmDirective ?? {};
+  if (!rawGmDirective || typeof rawGmDirective !== "object" || Array.isArray(rawGmDirective)) {
+    throw new Response("gmDirective must be an object", { status: 400 });
+  }
+  const gmDirective = rawGmDirective as Record<string, unknown>;
+  assertJsonTextContentPolicy(gmDirective, "gmDirective");
+
+  const directiveVersion = String(body.directiveVersion ?? "v1").trim();
+  if (!/^[A-Za-z0-9._-]{1,64}$/u.test(directiveVersion)) {
+    throw new Response("directiveVersion must be 1-64 safe characters", { status: 400 });
+  }
+  const directiveHash = campaignDirectiveHash({ version: directiveVersion, publicCharter, gmDirective });
+
   return {
     data: {
       name,
@@ -83,6 +108,10 @@ export function parseCampaignCreateBody(body: Record<string, unknown>): Campaign
       autoStart: body.autoStart !== false,
       rightsStatus: ipScreening.status,
       contentPolicyVersion: CONTENT_POLICY_VERSION,
+      publicCharter: publicCharter as Prisma.InputJsonObject,
+      gmDirective: gmDirective as Prisma.InputJsonObject,
+      directiveVersion,
+      directiveHash,
       settings: {
         ...(settings as Prisma.InputJsonObject),
         contentPolicy: {

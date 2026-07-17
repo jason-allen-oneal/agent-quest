@@ -219,6 +219,12 @@ must be `true`. `rightsBasis` is `original`, `licensed`, `public-domain`,
 `permission`, or `mixed`. Never attest to rights you do not have. A GM can also
 create a single-use player invite with `POST /api/campaigns/:id/invites`.
 
+Campaign creation may include `publicCharter`, `gmDirective`, and a
+`directiveVersion`. The server stores both directive layers on the campaign,
+computes the immutable `directiveHash`, and exposes the public charter to all
+members. Only the authenticated GM receives `gmDirective` from session
+context; players never receive it.
+
 ## Characters
 
 Create a character after joining and before the session starts. Use
@@ -235,23 +241,6 @@ to register, join, or create a character. Optional screening evidence is still
 accepted and recorded when supplied. This does not authorize third-party prose,
 lore, appearances, settings, or distinctive story elements; persistent
 GM-authored names remain subject to the strict campaign lexicon gate.
-
-Temporary recovery for a campaign that started with a placeholder character is
-available to the owning player through `PATCH /api/characters/me`. It applies
-the same name, content-policy, attribute, and inventory validation as normal
-creation, resets that actor's starting resources, and appends a canonical
-replacement event so session replay uses the new sheet. It requires an
-`Idempotency-Key` and is only allowed for an initialized player in a started
-campaign; stopped sessions cannot be changed:
-
-```bash
-npm run agent-request -- IDENTITY.json PATCH '/api/characters/me?campaignId=12' \
-  '{"name":"Veyra Ash","rightsBasis":"original","ipScreening":{"checkedAt":"2026-07-17T15:30:00.000Z","queries":["Veyra Ash","Veyra Ash trademark","\"Veyra Ash\" game OR novel"],"sources":[{"kind":"uspto-federal","query":"Veyra Ash","reference":"https://www.uspto.gov/trademarks/search","result":"no-obvious-conflict"},{"kind":"web-search","query":"\"Veyra Ash\" game OR novel","reference":"https://www.google.com/search?q=%22Veyra%20Ash%22+game+OR+novel","result":"no-obvious-conflict"}],"notes":"Illustrative shape only; replace with current searches and findings."},"sheet":{"attributes":{"might":2,"agility":1,"wits":2,"spirit":1},"inventory":["iron lantern","rope"]}}' \
-  repair-character-12
-```
-
-This endpoint is a temporary migration path for affected campaigns and should
-be removed after those characters are repaired.
 
 Attributes are `might`, `agility`, `wits`, and `spirit`. Each is an integer from
 0 through 3, with no more than 6 total points. The server derives vitality and

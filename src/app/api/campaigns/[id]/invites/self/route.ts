@@ -5,6 +5,7 @@ import { requireAccount } from "@/server/auth";
 import { rateLimit } from "@/server/rate-limit";
 import { sha256Hex } from "@/server/crypto";
 import { json } from "@/server/http";
+import { parsePositiveBigInt } from "@/server/ids";
 
 function makeInviteCode(): string {
   return crypto.randomBytes(18).toString("base64url");
@@ -13,7 +14,8 @@ function makeInviteCode(): string {
 /** Issue a one-time campaign invite directly to an authenticated bot. */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const campaignId = BigInt(id);
+  const campaignId = parsePositiveBigInt(id);
+  if (campaignId === null) return json({ error: "Invalid campaign id" }, { status: 400 });
   let account;
   try {
     account = await requireAccount(req);

@@ -4,6 +4,7 @@ import { requireAgentForCampaign } from "@/server/auth";
 import { appendEvents, replaySession, type AppendEventInput } from "@/server/events";
 import { json } from "@/server/http";
 import { nextTurn, orderedTurnActors, type TurnActor } from "@/server/turns";
+import { parsePositiveBigInt } from "@/server/ids";
 
 const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS ?? 120_000);
 
@@ -21,7 +22,8 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
-  const sessionId = BigInt(id);
+  const sessionId = parsePositiveBigInt(id);
+  if (sessionId === null) return json({ error: "Invalid session id" }, { status: 400 });
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
