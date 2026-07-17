@@ -29,6 +29,8 @@ export type AppendEventInput = {
   payload: unknown;
   idempotencyKey?: string;
   idempotencyHash?: string;
+  /** Request correlation only; never persisted in the event payload. */
+  requestId?: string;
 };
 
 export async function appendEvent(input: AppendEventInput) {
@@ -40,49 +42,59 @@ export async function appendEventsInTransaction(tx: Prisma.TransactionClient, in
   if (!inputs.length) return [];
   const sessionId = inputs[0]!.sessionId;
   if (inputs.some((input) => input.sessionId !== sessionId)) throw new Error("Event batch must target one session");
+  const requestId = inputs.find((input) => input.requestId)?.requestId;
+  let firstSequence: bigint | undefined;
   // Allocate the next per-session sequence number atomically. Callers that
   // already own a transaction can use this directly so state rows and events
   // commit or roll back together.
-  await tx.sessionSequence.upsert({
-    where: { sessionId },
-    create: { sessionId, nextSequence: 1n },
-    update: {},
-  });
+  try {
+    await tx.sessionSequence.upsert({
+      where: { sessionId },
+      create: { sessionId, nextSequence: 1n },
+      update: {},
+    });
 
-  const seqRow = await tx.sessionSequence.update({
-    where: { sessionId },
-    data: { nextSequence: { increment: BigInt(inputs.length) } },
-    select: { nextSequence: true },
-  });
+    const seqRow = await tx.sessionSequence.update({
+      where: { sessionId },
+      data: { nextSequence: { increment: BigInt(inputs.length) } },
+      select: { nextSequence: true },
+    });
 
-  const firstSequence = seqRow.nextSequence - BigInt(inputs.length);
-  const created = [];
-  for (let index = 0; index < inputs.length; index += 1) {
-    const input = inputs[index]!;
-    created.push(await tx.event.create({ data: {
-      campaignId: input.campaignId,
-      sessionId: input.sessionId,
-      agentId: input.agentId ?? null,
-      idempotencyKey: input.idempotencyKey,
-      idempotencyHash: input.idempotencyHash,
-      type: input.type,
-      payload: input.payload as Prisma.InputJsonValue,
-      sequence: firstSequence + BigInt(index),
-    }}));
+    firstSequence = seqRow.nextSequence - BigInt(inputs.length);
+    const created = [];
+    for (let index = 0; index < inputs.length; index += 1) {
+      const input = inputs[index]!;
+      created.push(await tx.event.create({ data: {
+        campaignId: input.campaignId,
+        sessionId: input.sessionId,
+        agentId: input.agentId ?? null,
+        idempotencyKey: input.idempotencyKey,
+        idempotencyHash: input.idempotencyHash,
+        type: input.type,
+        payload: input.payload as Prisma.InputJsonValue,
+        sequence: firstSequence + BigInt(index),
+      }}));
+    }
+    return created;
+  } catch (error) {
+    console.error(JSON.stringify({
+      category: "event_append_failed",
+      requestId,
+      sessionId: sessionId.toString(),
+      sequenceStart: firstSequence?.toString(),
+      sequenceEnd: firstSequence === undefined ? undefined : (firstSequence + BigInt(inputs.length - 1)).toString(),
+      eventCount: inputs.length,
+      eventTypes: inputs.map((input) => input.type),
+      prismaCode: typeof error === "object" && error && "code" in error ? error.code : undefined,
+    }));
+    throw error;
   }
-  return created;
 }
 
 export async function appendEvents(inputs: AppendEventInput[]) {
   if (!inputs.length) return [];
   const sessionId = inputs[0]!.sessionId;
   return await prisma.$transaction((tx) => appendEventsInTransaction(tx, inputs)).catch(async (error: unknown) => {
-    console.error(JSON.stringify({
-      category: "event_append_failed",
-      sessionId: sessionId.toString(),
-      eventTypes: inputs.map((input) => input.type),
-      prismaCode: typeof error === "object" && error && "code" in error ? error.code : undefined,
-    }));
     const idempotentInput = inputs.find((input) => input.idempotencyKey);
     if (idempotentInput && typeof error === "object" && error && "code" in error && error.code === "P2002") {
       const existing = await prisma.event.findFirst({ where: { sessionId, agentId: idempotentInput.agentId ?? null, idempotencyKey: idempotentInput.idempotencyKey } });

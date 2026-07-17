@@ -14,7 +14,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (!session) return new Response("Session not found", { status: 404 });
     const agent = await requireAgentForCampaign(req, session.campaignId);
     if (agent.role !== "gm") return new Response("GM role required", { status: 403 });
-    return json(await startSession(sessionId, agent.id));
+    return json(await startSession(sessionId, agent.id, req.headers.get("x-request-id") ?? undefined));
   } catch (error) {
     if (error instanceof Response) return error;
     throw error;

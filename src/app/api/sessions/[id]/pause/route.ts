@@ -47,6 +47,7 @@ export async function POST(
         idempotencyKey,
         type: "SESSION_PAUSED",
         payload: { pausedAtMs: Date.now() },
+        requestId: req.headers.get("x-request-id") ?? undefined,
       }]);
 
       return json({ ok: true, idempotent: false });

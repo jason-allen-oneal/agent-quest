@@ -57,7 +57,7 @@ export function evaluateAutoStartReadiness(configuration: unknown, members: Read
   };
 }
 
-export async function startSession(sessionId: bigint, initiatingGmAgentId: bigint) {
+export async function startSession(sessionId: bigint, initiatingGmAgentId: bigint, requestId?: string) {
   return prisma.$transaction(async (tx) => {
     const session = await tx.session.findUnique({
       where: { id: sessionId },
@@ -78,6 +78,7 @@ export async function startSession(sessionId: bigint, initiatingGmAgentId: bigin
       idempotencyKey: previousStatus === "created" ? "session-started" : undefined,
       type: "SESSION_STARTED",
       payload: { startedAtMs: now },
+      requestId,
     }];
 
     if (previousStatus === "created") {
@@ -108,16 +109,18 @@ export async function startSession(sessionId: bigint, initiatingGmAgentId: bigin
               conditions: [],
             },
           },
+          requestId,
         });
       }
       events.push(
-        { campaignId: session.campaignId, sessionId, agentId: initiatingGmAgentId, type: "ROUND_STARTED", payload: { roundNumber: 1, startedAtMs: now } },
+        { campaignId: session.campaignId, sessionId, agentId: initiatingGmAgentId, type: "ROUND_STARTED", payload: { roundNumber: 1, startedAtMs: now }, requestId },
         {
           campaignId: session.campaignId,
           sessionId,
           agentId: gm.id,
           type: "TURN_ADVANCED",
           payload: { turnNumber: 1, roundNumber: 1, agentId: gm.id.toString(), phase: "awaiting_adjudication", startedAtMs: now, reason: "session_started" },
+          requestId,
         },
       );
     }

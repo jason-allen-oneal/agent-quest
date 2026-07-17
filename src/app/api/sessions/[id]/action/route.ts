@@ -18,6 +18,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const { id } = await ctx.params;
     const sessionId = parsePositiveBigInt(id);
     if (sessionId === null) return json({ error: "Invalid session id" }, { status: 400 });
+    const requestId = req.headers.get("x-request-id") ?? undefined;
     const clientIdempotencyKey = requireIdempotencyKey(req);
     const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { campaignId: true, status: true } });
     if (!session) return new Response("Session not found", { status: 404 });
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         idempotencyHash,
         type: "ACTION_SUBMITTED",
         payload: { kind: "intent", intent: action.intent, actingAgentId: agent.id.toString(), submittedAtMs: Date.now(), clientIdempotencyKey },
+        requestId,
       });
       return json({ ok: true, event, phase: "awaiting_adjudication", gmActionRequired: true }, { status: 201 });
     }
@@ -128,6 +130,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         reason: "adjudicated",
       },
     });
+    for (const event of events) event.requestId = requestId;
     const appended = await appendEvents(events);
     return json({ ok: true, events: appended, resolution: checkResult, effects, nextTurn: { agentId: next.actor.id, roundNumber: next.roundNumber, phase: next.phase } }, { status: 201 });
   } catch (error) {

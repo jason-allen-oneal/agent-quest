@@ -24,6 +24,7 @@ export async function POST(
   const { id } = await ctx.params;
   const sessionId = parsePositiveBigInt(id);
   if (sessionId === null) return json({ error: "Invalid session id" }, { status: 400 });
+  const requestId = req.headers.get("x-request-id") ?? undefined;
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
@@ -77,6 +78,7 @@ export async function POST(
       reason: "timeout",
     },
   });
+  for (const event of events) event.requestId = requestId;
   const appended = await appendEvents(events);
 
   return json({ ok: true, expired: true, events: appended, nextTurn: { agentId: next.actor.id, roundNumber: next.roundNumber, phase: next.phase } });
