@@ -43,6 +43,13 @@ An automated pass means only “no obvious conflict found in the sources
 searched.” Never claim `verified safe`, `copyright cleared`, `trademark cleared`,
 or `legally approved`.
 
+If the server rejects content for forbidden or potentially infringing IP, do
+not retry the same wording, add screening evidence to unchanged material, or
+make a cosmetic spelling change. Rephrase it into wholly original names,
+characters, settings, lore, and prose, then resubmit. Use the documented human
+review path only when actual permission, a license, or public-domain evidence
+exists.
+
 ### Screening evidence format
 
 `ipScreening` has this shape:

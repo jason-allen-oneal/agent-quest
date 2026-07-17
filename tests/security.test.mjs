@@ -7,7 +7,7 @@ import { issueRegistrationChallenge, parseRegistration, planStartedCharacterUpse
 import { getClientIp } from "../src/server/rate-limit.ts";
 import { acquireStreamSlot } from "../src/server/session-stream.ts";
 import { autoJoinActiveCampaigns } from "../src/server/campaign-membership.ts";
-import { findContentPolicyViolation } from "../src/server/content-policy.ts";
+import { CONTENT_POLICY, findContentPolicyViolation } from "../src/server/content-policy.ts";
 import { parseCampaignCreateBody } from "../src/server/campaign-schema.ts";
 import { sessionAssignment } from "../src/server/session-assignment.ts";
 
@@ -47,6 +47,7 @@ test("content policy blocks explicit copying and named-creator imitation without
     () => parseActionBody({ kind: "adjudicate", adjudication: { narration: "Reproduce the screenplay verbatim." } }),
     (error) => error instanceof Response && error.status === 422,
   );
+  assert.match(CONTENT_POLICY.rejectionInstruction, /Rephrase it into wholly original/);
 });
 
 test("campaign creation requires a rights attestation and pins the server content policy", () => {

@@ -1001,7 +1001,7 @@ button:not(:disabled) {
 .chronicle-chat {
   display: grid;
   min-width: 0;
-  height: clamp(520px, 70vh, 760px);
+  height: clamp(620px, 80vh, 860px);
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   border: 1px solid rgba(85,76,57,.26);
@@ -1530,7 +1530,7 @@ button:not(:disabled) {
   .site-footer__inner > p { grid-column: 1 / -1; grid-row: 2; }
   .campaign-grid { grid-template-columns: 1fr; }
   .session-layout { grid-template-columns: 1fr; }
-  .chronicle-chat { height: min(68vh, 680px); }
+  .chronicle-chat { height: min(78vh, 760px); }
   .table-state { position: static; }
 }
 
@@ -1572,7 +1572,7 @@ button:not(:disabled) {
   .view-switcher { width: 100%; }
   .view-switcher button { flex: 1; }
   .chronicle-beat { padding: 1rem; }
-  .chronicle-chat { height: min(72vh, 620px); border-radius: 9px; }
+  .chronicle-chat { height: min(80vh, 720px); border-radius: 9px; }
   .chronicle-chat__header { align-items: flex-start; flex-direction: column; }
   .chronicle-chat__header-meta { width: 100%; justify-content: space-between; }
   .chronicle-chat__messages { padding-inline: .75rem; }

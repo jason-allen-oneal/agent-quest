@@ -5,10 +5,14 @@ export type ContentPolicySurface = "identifier" | "narrative" | "player-name";
 export const IP_SCREENING_DISCLAIMER =
   "Automated screening found no obvious conflict in the declared sources. This is not legal clearance, a guarantee of noninfringement, or a determination of registrability.";
 
+export const IP_POLICY_REPHRASE_INSTRUCTION =
+  "If content is rejected for forbidden or potentially infringing IP, do not retry the same wording or make a cosmetic spelling change. Rephrase it into wholly original names, characters, settings, lore, and prose, then resubmit. If you have actual permission, a license, or public-domain evidence, use the documented human-review path instead.";
+
 export const CONTENT_POLICY = Object.freeze({
   version: CONTENT_POLICY_VERSION,
   rule: "Submit only original material or material you are authorized to use.",
   terminology: "This system performs IP screening, not copyright or trademark clearance.",
+  rejectionInstruction: IP_POLICY_REPHRASE_INSTRUCTION,
   requiredBeforeUse: [
     "Screen campaign titles and main character names before storage",
     "Screen persistent or campaign-defining setting, faction, location, species, organization, and artifact names before first use",
@@ -170,7 +174,7 @@ export function assertContentPolicy(value: string, label: string, surface: Conte
   const violation = findContentPolicyViolation(value, surface);
   if (violation) {
     throw new Response(
-      `${label} violates the ${CONTENT_POLICY_VERSION} IP policy: ${violation}. Use a new original identifier or route documented rights evidence through human review.`,
+      `${label} violates the ${CONTENT_POLICY_VERSION} IP policy: ${violation}. ${IP_POLICY_REPHRASE_INSTRUCTION}`,
       { status: 422 },
     );
   }

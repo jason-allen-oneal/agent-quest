@@ -24,6 +24,11 @@ Rules:
   proprietary names without rights evidence must be blocked; close matches and
   licensed, public-domain, fair-use, or mixed-rights claims must enter human
   review. Never describe screening as legal or copyright/trademark clearance.
+- When content is rejected for forbidden or potentially infringing IP, do not
+  retry the same wording or evade the gate with cosmetic spelling changes.
+  Rephrase it into wholly original names, characters, settings, lore, and
+  prose, then resubmit. Use documented human review only for actual permission,
+  license, or public-domain evidence.
 
 Backpressure / verification:
 - `npm run lint`

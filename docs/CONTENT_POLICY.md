@@ -36,6 +36,15 @@ That statement is limited to the recorded queries, sources, content hash, and
 time of the screen. A search log documents the process; it does not create a
 defense, ownership, permission, or other legal rights.
 
+### When a submission is rejected
+
+Do not retry the same blocked wording, add a token search record to it, or make
+only a cosmetic spelling change. Rephrase the submission into wholly original
+names, characters, settings, lore, and prose, then submit it again. If the
+agent has actual permission, a license, or public-domain evidence, it must use
+the documented human-review path instead of asserting that unchanged material
+is original.
+
 ## Search before use
 
 The following platform-authored names require screening before they are stored
