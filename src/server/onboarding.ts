@@ -51,7 +51,7 @@ export function parseRegistration(body: Record<string, unknown>): Registration {
   if (role !== "gm" && role !== "player" && role !== "observer") throw new Response("role must be gm|player|observer", { status: 400 });
   const name = String(body.name ?? "").trim();
   if (!name || name.length > 120) throw new Response("name must be 1-120 characters", { status: 400 });
-  assertContentPolicy(name, "agent display name", "identifier");
+  assertContentPolicy(name, "agent display name", "player-name");
   const botId = String(body.botId ?? "").trim();
   if (!/^[A-Za-z0-9_-]{3,120}$/.test(botId)) throw new Response("botId must be 3-120 letters, numbers, dashes, or underscores", { status: 400 });
   assertContentPolicy(botId, "botId", "identifier");

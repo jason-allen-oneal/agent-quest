@@ -9,7 +9,7 @@ import { assertContentPolicy } from "@/server/content-policy";
 import { parseCharacterSheet } from "@/server/rpg-rules";
 import { maybeAutoStartCampaign } from "@/server/session-start";
 import { sha256Hex } from "@/server/crypto";
-import { parseIpScreeningEvidence, parseRightsBasis } from "@/server/ip-screening";
+import { parseIpScreeningEvidence, parseRightsBasis, type IpScreeningEvidence } from "@/server/ip-screening";
 import { planStartedCharacterUpsert } from "@/server/onboarding";
 
 function requestedCampaignId(req: NextRequest): bigint | Response | undefined {
@@ -26,9 +26,12 @@ function requestedCampaignId(req: NextRequest): bigint | Response | undefined {
 function parseCharacterInput(body: Record<string, unknown>) {
   const name = String(body.name ?? body.characterName ?? "").trim().slice(0, 120);
   if (!name) throw new Response("character name required", { status: 400 });
-  assertContentPolicy(name, "character name", "identifier");
-  const rightsBasis = parseRightsBasis(body.rightsBasis ?? "original");
-  const ipScreening = parseIpScreeningEvidence(body.ipScreening, { subject: name, rightsBasis, label: "ipScreening" });
+  assertContentPolicy(name, "character name", "player-name");
+  const hasScreening = body.ipScreening != null || body.rightsBasis != null;
+  const rightsBasis = hasScreening ? parseRightsBasis(body.rightsBasis ?? "original") : null;
+  const ipScreening: IpScreeningEvidence | null = hasScreening
+    ? parseIpScreeningEvidence(body.ipScreening, { subject: name, rightsBasis: rightsBasis!, label: "ipScreening" })
+    : null;
   const sheet = parseCharacterSheet(body.sheet);
   return { name, rightsBasis, ipScreening, sheet };
 }
@@ -95,21 +98,23 @@ export async function POST(req: NextRequest) {
       data: { characterId: created.id },
       select: { id: true },
     });
-    await tx.contentReview.create({
-      data: {
-        campaignId: agent.campaignId,
-        characterId: created.id,
-        accountId: agent.accountId,
-        agentId: agent.id,
-        surface: "character_name",
-        subjectHash: ipScreening.subjectHash,
-        decision: ipScreening.status,
-        rightsBasis: ipScreening.rightsBasis,
-        policyVersion: ipScreening.policyVersion,
-        checkedAt: new Date(ipScreening.checkedAt),
-        evidence: ipScreening as unknown as Prisma.InputJsonValue,
-      },
-    });
+    if (ipScreening) {
+      await tx.contentReview.create({
+        data: {
+          campaignId: agent.campaignId,
+          characterId: created.id,
+          accountId: agent.accountId,
+          agentId: agent.id,
+          surface: "character_name",
+          subjectHash: ipScreening.subjectHash,
+          decision: ipScreening.status,
+          rightsBasis: ipScreening.rightsBasis,
+          policyVersion: ipScreening.policyVersion,
+          checkedAt: new Date(ipScreening.checkedAt),
+          evidence: ipScreening as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
     return created;
   });
 
@@ -207,22 +212,24 @@ export async function PATCH(req: NextRequest) {
       type: eventType,
       payload: { actor: replacement.actor, ipScreening, replacedAtMs: Date.now() },
     });
-    await prisma.contentReview.create({
-      data: {
-        campaignId: agent.campaignId,
-        characterId: character.id,
-        eventId: event.id,
-        accountId: agent.accountId,
-        agentId: agent.id,
-        surface: "character_name",
-        subjectHash: ipScreening.subjectHash,
-        decision: ipScreening.status,
-        rightsBasis: ipScreening.rightsBasis,
-        policyVersion: ipScreening.policyVersion,
-        checkedAt: new Date(ipScreening.checkedAt),
-        evidence: ipScreening as unknown as Prisma.InputJsonValue,
-      },
-    });
+    if (ipScreening) {
+      await prisma.contentReview.create({
+        data: {
+          campaignId: agent.campaignId,
+          characterId: character.id,
+          eventId: event.id,
+          accountId: agent.accountId,
+          agentId: agent.id,
+          surface: "character_name",
+          subjectHash: ipScreening.subjectHash,
+          decision: ipScreening.status,
+          rightsBasis: ipScreening.rightsBasis,
+          policyVersion: ipScreening.policyVersion,
+          checkedAt: new Date(ipScreening.checkedAt),
+          evidence: ipScreening as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
     return json({ ok: true, created: mode === "create", replaced: mode === "replace", character, event }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;

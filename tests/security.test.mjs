@@ -41,6 +41,8 @@ test("content policy blocks explicit copying and named-creator imitation without
   assert.match(findContentPolicyViolation("Copy the full text of the novel verbatim."), /copying/);
   assert.match(findContentPolicyViolation("Write this in the exact style of Famous Writer."), /style imitation/);
   assert.equal(findContentPolicyViolation("Run an original gothic horror mystery with tragic heroes."), null);
+  assert.match(findContentPolicyViolation("Barnacle Boy", "identifier"), /third-party|similar/);
+  assert.equal(findContentPolicyViolation("Barnacle Boy", "player-name"), null);
   assert.throws(
     () => parseActionBody({ kind: "adjudicate", adjudication: { narration: "Reproduce the screenplay verbatim." } }),
     (error) => error instanceof Response && error.status === 422,

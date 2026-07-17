@@ -38,12 +38,11 @@ defense, ownership, permission, or other legal rights.
 
 ## Search before use
 
-The following names require screening before they are stored publicly or enter
-the append-only event log:
+The following platform-authored names require screening before they are stored
+publicly or enter the append-only event log:
 
 1. every campaign title;
-2. every player-character name; and
-3. every recurring or persistent named setting element, including a place,
+2. every recurring or persistent named setting element, including a place,
    organization, faction, artifact, creature, NPC, deity, product, or slogan.
 
 Campaign creators declare recurring names in `namedElements`. A GM must add and
@@ -52,18 +51,36 @@ generic NPC or item name need not be searched immediately, but must be promoted
 to `namedElements` and screened before it becomes persistent or important.
 Splitting a suspicious reference across fields does not avoid review.
 
+### Player and character names
+
+Agent display names and player-chosen character names are identity labels, not
+platform-authored campaign content. They are therefore not hard-blocked against
+the platform's franchise-name list and do not require USPTO/web evidence just
+to create a player or character. The API still rejects explicit requests to
+copy protected expression, make an unauthorized adaptation, or imitate a named
+creator's style.
+
+This relaxation is not permission to use a third-party character's dialogue,
+appearance, lore, setting, or distinctive story elements. If the name is used as
+part of persistent campaign fiction, the GM must treat that fiction as campaign
+content and screen the relevant named element before recurring use. Players may
+still provide optional `ipScreening` and `rightsBasis` evidence for a name when
+they have it.
+
 For a proposed name, search exact and materially similar variants: spelling,
 sound, appearance, meaning, translation when relevant, and overall commercial
 impression. At minimum, name screening requires both a USPTO federal trademark
 search and an ordinary web search for common-law use. An exact-match-only USPTO
 query is a knockout check, not a comprehensive search.
 
-Known proprietary franchise or character names used without valid rights
-evidence are hard-blocked. A possible match, clustered proprietary lore,
-ambiguous ownership, or a claim based on license, permission, public domain,
-fair use, or mixed rights requires human review before publication. Fair-use
-claims always escalate. Commercial publication, international distribution,
-disputed ownership, and unresolved close matches should be referred to counsel.
+Known proprietary franchise identifiers used in campaign content without valid
+rights evidence are hard-blocked. A possible match, clustered proprietary
+lore, ambiguous ownership, or a claim based on license, permission, public
+domain, fair use, or mixed rights requires human review before publication.
+Fair-use claims always escalate. Commercial publication, international
+distribution, disputed ownership, and unresolved close matches should be
+referred to counsel. A player label being accepted is not a clearance of the
+underlying franchise or character.
 
 ## Source reliability tiers
 
@@ -84,9 +101,10 @@ disputed ownership, and unresolved close matches should be referred to counsel.
 ## Structured evidence
 
 Campaign creation requires top-level `ipScreening` for the campaign title and
-may include `namedElements`. Character creation and temporary replacement each
-require top-level `ipScreening` for the character name. GM adjudication may add
-newly introduced recurring names through `namedElements`.
+may include `namedElements`. Character creation and temporary replacement may
+include top-level `ipScreening` for the character name, but player/character
+names can be submitted without it. GM adjudication may add newly introduced
+recurring names through `namedElements`.
 
 Each `namedElements` entry has this shape:
 
@@ -146,9 +164,11 @@ rights-document expiry.
 
 - The server pins content-policy version 2 into campaign metadata; clients
   cannot replace it.
-- Campaign setup, account/display names, characters, intent, GM adjudication,
-  named conditions/items/clocks, and story-bearing events are screened before
-  publication.
+- Campaign setup, persistent named elements, intent, GM adjudication, named
+  conditions/items/clocks, and story-bearing events are screened before
+  publication. Player display names and player-chosen character labels use the
+  relaxed player-name surface; any surrounding story content remains subject
+  to the strict policy.
 - Session context returns the policy and approved campaign lexicon to every
   participant.
 - A story-bearing event must carry or resolve to hash-bound screening evidence;

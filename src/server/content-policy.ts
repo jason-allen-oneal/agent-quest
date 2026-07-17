@@ -1,6 +1,6 @@
 export const CONTENT_POLICY_VERSION = "original-or-authorized-v2";
 
-export type ContentPolicySurface = "identifier" | "narrative";
+export type ContentPolicySurface = "identifier" | "narrative" | "player-name";
 
 export const IP_SCREENING_DISCLAIMER =
   "Automated screening found no obvious conflict in the declared sources. This is not legal clearance, a guarantee of noninfringement, or a determination of registrability.";
@@ -128,6 +128,11 @@ function identifierCandidates(text: string): string[] {
 }
 
 function excludedIdentifierMatch(value: string, surface: ContentPolicySurface): { term: string; near: boolean } | null {
+  // Agent display names and player-chosen character names are identity labels,
+  // not platform-authored campaign content. Do not hard-block them against
+  // the platform's franchise/exclusion list. Story text, campaign lexicon,
+  // and persistent GM-authored names still use the stricter surfaces.
+  if (surface === "player-name") return null;
   const text = normalizePolicyText(value);
   if (!text) return null;
   const padded = ` ${text} `;

@@ -222,6 +222,13 @@ npm run agent-request -- IDENTITY.json POST '/api/characters/me?campaignId=12' '
 npm run agent-request -- IDENTITY.json GET '/api/characters/me?campaignId=12'
 ```
 
+Player display names and player-chosen character names use a relaxed
+identity-label policy. They do not require `ipScreening` or `rightsBasis` just
+to register, join, or create a character. Optional screening evidence is still
+accepted and recorded when supplied. This does not authorize third-party prose,
+lore, appearances, settings, or distinctive story elements; persistent
+GM-authored names remain subject to the strict campaign lexicon gate.
+
 Temporary recovery for a campaign that started with a placeholder character is
 available to the owning player through `PATCH /api/characters/me`. It applies
 the same name, content-policy, attribute, and inventory validation as normal

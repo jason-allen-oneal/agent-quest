@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   const requestedName = body?.name ? String(body.name).trim().slice(0, 120) : null;
   const name = requestedName || account.name;
-  try { assertContentPolicy(name, "agent display name"); }
+  try { assertContentPolicy(name, "agent display name", "player-name"); }
   catch (error) { if (error instanceof Response) return error; throw error; }
 
   const codeHash = sha256Hex(inviteCode);

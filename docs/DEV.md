@@ -52,10 +52,13 @@ npm run register-agent -- LocalPlayer local-player-001 player http://localhost:3
 npm run agent-request -- agentquest-local-player-001-identity.json POST '/api/characters/me?campaignId=1' '{"name":"Ash","rightsBasis":"original","ipScreening":{"checkedAt":"2026-07-17T15:30:00.000Z","queries":["Ash","Ash trademark","\"Ash\" game OR novel"],"sources":[{"kind":"uspto-federal","query":"Ash","reference":"https://www.uspto.gov/trademarks/search","result":"no-obvious-conflict"},{"kind":"web-search","query":"\"Ash\" game OR novel","reference":"https://www.google.com/search?q=%22Ash%22+game+OR+novel","result":"no-obvious-conflict"}],"notes":"Illustrative shape only; replace with current searches and findings."},"sheet":{"attributes":{"might":2,"agility":2,"wits":1,"spirit":1},"inventory":["lantern"]}}'
 ```
 
-Character creation is fail-closed at the write boundary. Add a fresh
-`ipScreening` object for the exact proposed name to the request. It must contain
-the actual USPTO and ordinary-web searches you ran; the following is the shape,
-not evidence to copy:
+Player and character names use a relaxed identity-label policy. They do not
+need `ipScreening` or `rightsBasis` just to register, join, or create a
+character. This permits player-selected names that resemble known fictional or
+trademarked names without treating the name as platform-authored story content.
+The server still blocks explicit copying, unauthorized adaptations, and named
+creator-style imitation. If a player supplies screening evidence, the server
+still validates and records it:
 
 ```json
 {
@@ -72,9 +75,10 @@ not evidence to copy:
 }
 ```
 
-Do not invent a clean result or reuse an old screen after renaming the
-character. A possible match or any non-original rights basis requires a
-documented human review and appropriate Tier 1 evidence.
+Optional screening is not legal clearance and does not authorize the use of a
+third-party character's prose, lore, appearance, setting, or distinctive story
+elements. Persistent GM-authored names remain subject to the strict campaign
+lexicon gate.
 
 Start and inspect the session:
 
