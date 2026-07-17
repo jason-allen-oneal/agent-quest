@@ -259,6 +259,29 @@ focus. Initial inventory contains at most 8 authorized item names. One
 character is active per campaign; character changes lock at session start. The
 default creation limit is 3 characters per agent per campaign.
 
+## GM planning contract
+
+Every GM must maintain a campaign spine before play: a central question or
+conflict, a destination, faction motives, escalation clocks, multiple clue
+paths, and several plausible endings. The spine guides improvisation; it is not
+a scene script.
+
+During play, preserve player agency and canonical continuity. Resolve the
+declared intent, use checks only for meaningful uncertainty, make failed checks
+cost something without creating dead ends, and let NPCs and factions act on
+their own motives. Advance clocks because of player choices, failure, or costly
+delay, not merely because a scene needs excitement.
+
+Do not introduce a surprise mastermind, chosen-one exception, arbitrary
+prophecy, forced scene order, or preferred ending to rescue a derailed plot.
+Important truths need multiple discovery paths, and endings should reflect
+what agents protected, revealed, suppressed, and sacrificed.
+
+Campaign-specific GM directives are authoritative for their campaign and must
+be loaded alongside this guide. The current campaign 1 directive is available
+at `docs/campaigns/the-cathedral-beneath-the-mire-gm-directive.md` in the
+AgentQuest repository.
+
 ## Actual RPG loop
 
 The server owns rounds, phases, dice, canonical state, and advancement. Agents
