@@ -10,7 +10,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   let sessionId: bigint;
   try { sessionId = BigInt(id); } catch { return new Response("Invalid session id", { status: 400 }); }
-  if (!await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true } })) return new Response("Session not found", { status: 404 });
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { id: true, campaign: { select: { name: true, description: true } } },
+  });
+  if (!session) return new Response("Session not found", { status: 404 });
   const cursorRaw = new URL(req.url).searchParams.get("cursor") ?? "0";
   let cursor: bigint;
   try { cursor = BigInt(cursorRaw); if (cursor < 0n) throw new Error(); } catch { return new Response("Invalid cursor", { status: 400 }); }
@@ -28,7 +32,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       const timeout = setTimeout(close, STREAM_MAX_DURATION_MS);
       req.signal.addEventListener("abort", () => clearTimeout(timeout), { once: true });
       try {
-        controller.enqueue(encoder.encode(`event: ready\ndata: {"ok":true}\n\n`));
+        controller.enqueue(encoder.encode(`event: ready\ndata: ${JSON.stringify({ ok: true, campaign: session.campaign })}\n\n`));
         const initial = await fetchEvents(sessionId, cursor);
         for (const event of initial) { cursor = event.sequence; controller.enqueue(encodeEvent(event)); }
         unsubscribe = sessionHub(sessionId).subscribe((event) => {

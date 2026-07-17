@@ -20,6 +20,8 @@ function formatTime(value: string | number | null | undefined) {
 
 function toneClasses(tone: ChronicleBeat["tone"]) {
   switch (tone) {
+    case "scene":
+      return "chronicle-beat--scene";
     case "gm":
       return "chronicle-beat--gm";
     case "action":
@@ -33,6 +35,15 @@ function toneClasses(tone: ChronicleBeat["tone"]) {
 
 function Beat({ beat, compact = false }: { beat: ChronicleBeat; compact?: boolean }) {
   const time = formatTime(beat.event.createdAt);
+
+  if (beat.presentation === "marker") {
+    return (
+      <div className="chronicle-marker" aria-label={`${beat.eyebrow}: ${beat.title}`}>
+        <span>{beat.title}</span>
+        <time>{time ?? "Recorded"}</time>
+      </div>
+    );
+  }
 
   return (
     <article className={`chronicle-beat ${compact ? "chronicle-beat--compact" : ""} ${toneClasses(beat.tone)}`}>
@@ -55,6 +66,7 @@ export default function SessionWatchPage({
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [status, setStatus] = useState<string>("connecting");
   const [view, setView] = useState<"live" | "recap">("live");
+  const [campaign, setCampaign] = useState<{ name: string; description: string } | null>(null);
 
   useEffect(() => {
     params.then(({ id }) => setSessionId(id));
@@ -79,7 +91,17 @@ export default function SessionWatchPage({
       }
     };
 
-    es.addEventListener("ready", () => setStatus("live"));
+    es.addEventListener("ready", (message) => {
+      setStatus("live");
+      try {
+        const ready = JSON.parse((message as MessageEvent).data) as { campaign?: { name?: unknown; description?: unknown } };
+        if (typeof ready.campaign?.name === "string" && typeof ready.campaign.description === "string") {
+          setCampaign({ name: ready.campaign.name, description: ready.campaign.description });
+        }
+      } catch {
+        // Older stream payloads remain compatible during a rolling deployment.
+      }
+    });
     es.onerror = () => setStatus("reconnecting");
 
     return () => es.close();
@@ -87,7 +109,7 @@ export default function SessionWatchPage({
 
   const beats = useMemo(() => buildChronicleBeats(events), [events]);
   const turns = useMemo(() => buildTurns(events), [events]);
-  const latestStoryBeat = [...beats].reverse().find((beat) => beat.tone === "gm" || beat.tone === "action");
+  const latestStoryBeat = [...beats].reverse().find((beat) => beat.tone === "scene" || beat.tone === "gm" || beat.tone === "action");
   const latestTurn = [...turns].reverse().find((turn) => turn.turnNumber > 0);
 
   if (!sessionId) {
@@ -106,11 +128,8 @@ export default function SessionWatchPage({
             <span className="live-dot" />
             {status === "live" ? "The table is live" : status === "reconnecting" ? "Finding the table" : "Opening the table"}
           </span>
-          <h1>The Chronicle</h1>
-          <p>
-            Follow the latest scene as it happens, or switch to the recap to read
-            the adventure one turn at a time.
-          </p>
+          <h1>{campaign?.name ?? "The Chronicle"}</h1>
+          <p>{campaign?.description ?? "Follow the opening scene and every consequence as the adventure unfolds."}</p>
         </div>
 
         <div className="view-switcher" aria-label="Chronicle view">
@@ -137,7 +156,7 @@ export default function SessionWatchPage({
                 <div className="latest-scene__header">
                   <div>
                     <span>Where the story stands</span>
-                    <p>The most recent action or Game Master ruling</p>
+                    <p>The setting, latest action, or story consequence</p>
                   </div>
                   {latestTurn ? (
                     <div className="turn-pill">{latestTurn.roundNumber ? `Round ${latestTurn.roundNumber} · ` : ""}Turn {latestTurn.turnNumber}</div>
@@ -176,7 +195,11 @@ export default function SessionWatchPage({
             <h2>Current scene</h2>
             <dl>
               <div>
-                <dt>Chapter</dt>
+                <dt>Setting</dt>
+                <dd>{campaign?.name ?? "Opening scene"}</dd>
+              </div>
+              <div>
+                <dt>Progress</dt>
                 <dd>{latestTurn ? `${latestTurn.roundNumber ? `Round ${latestTurn.roundNumber} · ` : ""}Turn ${latestTurn.turnNumber}` : "Opening"}</dd>
               </div>
               <div>

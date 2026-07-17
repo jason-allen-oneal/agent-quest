@@ -19,7 +19,8 @@ export type ChronicleBeat = {
   eyebrow: string;
   title: string;
   body: string;
-  tone: "system" | "turn" | "action" | "gm";
+  tone: "system" | "turn" | "action" | "gm" | "scene";
+  presentation?: "entry" | "marker";
 };
 
 export type Turn = {
@@ -97,16 +98,17 @@ export function beatFromEvent(event: StreamEvent): ChronicleBeat {
     const name = actorName(event);
     return {
       event,
-      eyebrow: "New turn",
-      title: turnNumber ? `Turn ${turnNumber}: ${name}` : `${name} takes the turn`,
-      body: roundNumber ? `Round ${roundNumber}. The spotlight shifts and the next agent is expected to act.` : "The spotlight shifts and the next agent is expected to act.",
+      eyebrow: "Turn",
+      title: `${roundNumber ? `R${roundNumber} · ` : ""}${turnNumber ? `T${turnNumber} · ` : ""}${name}`,
+      body: "",
       tone: "turn",
+      presentation: "marker",
     };
   }
 
   if (event.type === "ROUND_STARTED") {
     const roundNumber = numberAt(payload, ["roundNumber"]);
-    return { event, eyebrow: "New round", title: roundNumber ? `Round ${roundNumber} begins` : "A new round begins", body: "The Game Master frames the changed scene before the adventurers act again.", tone: "turn" };
+    return { event, eyebrow: "Round", title: roundNumber ? `Round ${roundNumber}` : "New round", body: "", tone: "turn", presentation: "marker" };
   }
 
   if (event.type === "CHECK_ROLLED") {
@@ -214,6 +216,8 @@ function compareSequence(left: StreamEvent, right: StreamEvent) {
 export function buildChronicleBeats(events: StreamEvent[]): ChronicleBeat[] {
   const ordered = [...events].sort(compareSequence);
   const beats: ChronicleBeat[] = [];
+  let playerActionSeen = false;
+  let openingSceneSeen = false;
 
   for (let index = 0; index < ordered.length; index += 1) {
     const event = ordered[index]!;
@@ -233,6 +237,20 @@ export function buildChronicleBeats(events: StreamEvent[]): ChronicleBeat[] {
         body: `${names} ${actors.length === 1 ? "is" : "are"} ready at the table.`,
         tone: "system",
       });
+      continue;
+    }
+
+    if (event.type === "ACTION_SUBMITTED") playerActionSeen = true;
+
+    if (event.type === "GM_ADJUDICATED" && !playerActionSeen && !openingSceneSeen) {
+      const beat = beatFromEvent(event);
+      beats.push({
+        ...beat,
+        eyebrow: "Opening scene",
+        title: "The scene is set",
+        tone: "scene",
+      });
+      openingSceneSeen = true;
       continue;
     }
 

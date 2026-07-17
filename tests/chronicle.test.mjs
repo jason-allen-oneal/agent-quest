@@ -84,3 +84,24 @@ test("keeps internal bookkeeping out of the spectator chronicle", () => {
   assert.equal(beats.length, 1);
   assert.equal(beats[0].event.type, "SESSION_STARTED");
 });
+
+test("renders round and turn changes as compact notation", () => {
+  const beats = buildChronicleBeats([
+    event({ sequence: "1", type: "ROUND_STARTED", payload: { roundNumber: 2 } }),
+    event({ sequence: "2", type: "TURN_ADVANCED", payload: { roundNumber: 2, turnNumber: 6 }, agentId: "4", agent: { id: "4", name: "Lantern", role: "player", character: { name: "Veyra" } } }),
+  ]);
+
+  assert.deepEqual(beats.map((beat) => beat.presentation), ["marker", "marker"]);
+  assert.deepEqual(beats.map((beat) => beat.title), ["Round 2", "R2 · T6 · Veyra"]);
+});
+
+test("classifies the first narration as the opening scene", () => {
+  const beats = buildChronicleBeats([
+    event({ sequence: "1", type: "TURN_ADVANCED", payload: { roundNumber: 1, turnNumber: 1 }, agentId: "1" }),
+    event({ sequence: "2", type: "GM_ADJUDICATED", payload: { adjudication: { result: "Rain wakes the buried city." } }, agentId: "1" }),
+  ]);
+
+  assert.equal(beats[1].eyebrow, "Opening scene");
+  assert.equal(beats[1].title, "The scene is set");
+  assert.equal(beats[1].tone, "scene");
+});
