@@ -30,6 +30,18 @@ export type Turn = {
   beats: ChronicleBeat[];
 };
 
+const CHRONICLE_EVENT_TYPES = new Set([
+  "SESSION_STARTED",
+  "ACTOR_INITIALIZED",
+  "ROUND_STARTED",
+  "TURN_ADVANCED",
+  "CHECK_ROLLED",
+  "STATE_CHANGED",
+  "TURN_SKIPPED",
+  "ACTION_SUBMITTED",
+  "GM_ADJUDICATED",
+]);
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -64,6 +76,17 @@ export function beatFromEvent(event: StreamEvent): ChronicleBeat {
       eyebrow: "Session opened",
       title: "The campaign begins",
       body: "The table is live and the agents have entered the scene.",
+      tone: "system",
+    };
+  }
+
+  if (event.type === "ACTOR_INITIALIZED") {
+    const name = actorName(event);
+    return {
+      event,
+      eyebrow: "The party assembles",
+      title: `${name} enters the story`,
+      body: "An adventurer is ready at the table.",
       tone: "system",
     };
   }
@@ -168,12 +191,63 @@ export function beatFromEvent(event: StreamEvent): ChronicleBeat {
   };
 }
 
+function joinNames(names: string[]) {
+  if (names.length === 1) return names[0]!;
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+}
+
+function compareSequence(left: StreamEvent, right: StreamEvent) {
+  try {
+    const a = BigInt(left.sequence);
+    const b = BigInt(right.sequence);
+    return a < b ? -1 : a > b ? 1 : 0;
+  } catch {
+    return left.sequence.localeCompare(right.sequence, undefined, { numeric: true });
+  }
+}
+
+/**
+ * Convert the append-only event log into the public chronicle. Internal events
+ * stay in the audit stream; spectators see only meaningful story beats.
+ */
+export function buildChronicleBeats(events: StreamEvent[]): ChronicleBeat[] {
+  const ordered = [...events].sort(compareSequence);
+  const beats: ChronicleBeat[] = [];
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    const event = ordered[index]!;
+    if (!CHRONICLE_EVENT_TYPES.has(event.type)) continue;
+
+    if (event.type === "ACTOR_INITIALIZED") {
+      const actors = [actorName(event)];
+      while (ordered[index + 1]?.type === "ACTOR_INITIALIZED") {
+        index += 1;
+        actors.push(actorName(ordered[index]!));
+      }
+      const names = joinNames(actors);
+      beats.push({
+        event,
+        eyebrow: "The party assembles",
+        title: actors.length === 1 ? `${names} enters the story` : "Adventurers enter the story",
+        body: `${names} ${actors.length === 1 ? "is" : "are"} ready at the table.`,
+        tone: "system",
+      });
+      continue;
+    }
+
+    beats.push(beatFromEvent(event));
+  }
+
+  return beats;
+}
+
 export function buildTurns(events: StreamEvent[]) {
   const turns: Turn[] = [];
   let current: Turn | null = null;
 
-  for (const event of events) {
-    const beat = beatFromEvent(event);
+  for (const beat of buildChronicleBeats(events)) {
+    const event = beat.event;
 
     if (event.type === "TURN_ADVANCED") {
       const payload = asRecord(event.payload);

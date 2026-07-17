@@ -36,20 +36,12 @@ export async function POST(req: NextRequest) {
       });
       if (!invite) throw new Error("Invalid or expired invite");
 
-      const campaign = await tx.campaign.findUnique({ where: { id: invite.campaignId }, select: { settings: true } });
-      const settings = (campaign?.settings ?? {}) as Record<string, unknown>;
+      const campaign = await tx.campaign.findUnique({ where: { id: invite.campaignId }, select: { maxPlayers: true } });
       const openSession = await tx.session.findFirst({ where: { campaignId: invite.campaignId, status: "created" }, select: { id: true } });
       if (!openSession) throw new Error("Campaign membership is locked after the session starts");
 
-      // Enforce campaign roleCaps.player
-      const roleCapsRaw = settings.roleCaps;
-      const roleCaps = roleCapsRaw && typeof roleCapsRaw === "object" ? (roleCapsRaw as Record<string, unknown>) : null;
-      const capRaw = roleCaps ? roleCaps["player"] : null;
-      const cap = typeof capRaw === "number" ? capRaw : null;
-      if (cap !== null) {
-        const count = await tx.agent.count({ where: { campaignId: invite.campaignId, role: "player" } });
-        if (count >= cap) throw new Error("Role cap reached for player");
-      }
+      const count = await tx.agent.count({ where: { campaignId: invite.campaignId, role: "player" } });
+      if (!campaign || count >= campaign.maxPlayers) throw new Error("Player maximum reached");
 
       // Create membership if not already a member.
       const existing = await tx.agent.findUnique({
@@ -87,7 +79,7 @@ export async function POST(req: NextRequest) {
     return json({ ok: true, ...result }, { status: 201 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    const status = msg.includes("Role cap") || msg.includes("membership is locked") ? 409 : 400;
+    const status = msg.includes("maximum") || msg.includes("membership is locked") ? 409 : 400;
     return new Response(msg, { status });
   }
 }

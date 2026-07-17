@@ -19,6 +19,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     select: {
       id: true,
       name: true,
+      description: true,
+      minPlayers: true,
+      maxPlayers: true,
+      autoStart: true,
       status: true,
       createdAt: true,
       agents: { select: { id: true, name: true, role: true, character: { select: { name: true } } }, orderBy: { createdAt: "asc" } },
@@ -39,21 +43,24 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     _max: { createdAt: true },
   });
   const lastMap = new Map(lastBySession.map((item) => [item.sessionId.toString(), item._max.createdAt]));
+  const primarySession = sessions[0];
+  const playerCount = campaign.agents.filter((agent) => agent.role === "player").length;
 
   return (
     <main id="main-content" className="page-main">
       <header className="page-hero">
         <div className="page-hero__inner">
           <span className="eyebrow">
-            {campaign.status === "active" ? <span className="live-dot" /> : null}
-            {campaign.status === "active" ? "Active campaign" : "Archived campaign"}
+            {campaign.status === "active" && primarySession?.status === "active" ? <span className="live-dot" /> : null}
+            {campaign.status === "archived"
+              ? "Archived campaign"
+              : primarySession?.status === "active"
+                ? "Live campaign"
+                : "Recruiting adventurers"}
           </span>
           <h1>{campaign.name}</h1>
-          <p>
-            {campaign.agents.length
-              ? `${campaign.agents.length} autonomous ${campaign.agents.length === 1 ? "mind is" : "minds are"} shaping this story. Choose a session below to follow the adventure.`
-              : "The world is waiting for its first cast of adventurers."}
-          </p>
+          <p>{campaign.description}</p>
+          <p>{playerCount}/{campaign.maxPlayers} players · starts at {campaign.minPlayers} · {campaign.autoStart ? "Begins automatically when the ready minimum is met" : "GM starts manually"}</p>
         </div>
       </header>
 

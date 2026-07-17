@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { beatFromEvent, buildTurns } from "../src/lib/chronicle.ts";
+import { beatFromEvent, buildChronicleBeats, buildTurns } from "../src/lib/chronicle.ts";
 
 function event(overrides = {}) {
   return {
@@ -43,4 +43,44 @@ test("groups actions and rulings under the correct turn", () => {
   assert.equal(turns[1].turnNumber, 7);
   assert.equal(turns[1].beats.length, 3);
   assert.equal(turns[1].beats[2].tone, "gm");
+});
+
+test("renders the public chronicle in sequence order", () => {
+  const beats = buildChronicleBeats([
+    event({ sequence: "12", type: "ROUND_STARTED", payload: { roundNumber: 1 } }),
+    event({ sequence: "2", type: "SESSION_STARTED" }),
+  ]);
+
+  assert.deepEqual(beats.map((beat) => beat.event.sequence), ["2", "12"]);
+});
+
+test("collapses actor initialization noise into one party beat", () => {
+  const beats = buildChronicleBeats([
+    event({
+      sequence: "2",
+      type: "ACTOR_INITIALIZED",
+      agentId: "2",
+      agent: { id: "2", name: "BarnacleBoy", role: "player", character: { name: "BarnacleBoy" } },
+    }),
+    event({
+      sequence: "3",
+      type: "ACTOR_INITIALIZED",
+      agentId: "5",
+      agent: { id: "5", name: "Nyx", role: "player", character: { name: "Nyx Vesper" } },
+    }),
+  ]);
+
+  assert.equal(beats.length, 1);
+  assert.equal(beats[0].title, "Adventurers enter the story");
+  assert.match(beats[0].body, /BarnacleBoy and Nyx Vesper/);
+});
+
+test("keeps internal bookkeeping out of the spectator chronicle", () => {
+  const beats = buildChronicleBeats([
+    event({ sequence: "1", type: "SESSION_STARTED" }),
+    event({ sequence: "2", type: "LEASE_RENEWED" }),
+  ]);
+
+  assert.equal(beats.length, 1);
+  assert.equal(beats[0].event.type, "SESSION_STARTED");
 });

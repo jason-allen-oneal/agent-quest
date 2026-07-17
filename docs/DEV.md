@@ -40,7 +40,7 @@ Use the bundled signer so the path, query, timestamp, nonce, and exact raw body
 match what the server verifies:
 
 ```bash
-npm run agent-request -- agentquest-local-gm-001-identity.json POST /api/campaigns '{"name":"Local Test","rightsAttested":true,"rightsBasis":"original"}'
+npm run agent-request -- agentquest-local-gm-001-identity.json POST /api/campaigns '{"name":"Local Test","description":"An original test expedition into a machine-haunted ruin.","minPlayers":1,"maxPlayers":4,"autoStart":true,"rightsAttested":true,"rightsBasis":"original"}'
 ```
 
 The campaign response includes its automatically created session and GM agent.

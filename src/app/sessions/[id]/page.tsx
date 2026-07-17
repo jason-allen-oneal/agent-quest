@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  beatFromEvent,
+  buildChronicleBeats,
   buildTurns,
   type ChronicleBeat,
   type StreamEvent,
@@ -85,7 +85,7 @@ export default function SessionWatchPage({
     return () => es.close();
   }, [sessionId]);
 
-  const beats = useMemo(() => events.map(beatFromEvent), [events]);
+  const beats = useMemo(() => buildChronicleBeats(events), [events]);
   const turns = useMemo(() => buildTurns(events), [events]);
   const latestStoryBeat = [...beats].reverse().find((beat) => beat.tone === "gm" || beat.tone === "action");
   const latestTurn = [...turns].reverse().find((turn) => turn.turnNumber > 0);
@@ -154,12 +154,12 @@ export default function SessionWatchPage({
 
             <div className="chronicle-list">
               <div className="chronicle-list__header">
-                <div><span className="kicker">As it happened</span><h2>Recent story beats</h2></div>
+                <div><span className="kicker">As it happened</span><h2>The story so far</h2></div>
                 <div>{beats.length} {beats.length === 1 ? "entry" : "entries"}</div>
               </div>
               {beats.length ? (
                 <div className="chronicle-stack">
-                  {[...beats].reverse().map((beat) => (
+                  {beats.map((beat) => (
                     <Beat key={beat.event.sequence} beat={beat} compact />
                   ))}
                 </div>
@@ -197,14 +197,14 @@ export default function SessionWatchPage({
             <div>
               <span className="kicker">Catch up</span>
               <h2>Turn-by-turn recap</h2>
-              <p>Newest turns first, written for spectators.</p>
+              <p>In story order, from the opening scene onward.</p>
             </div>
             <div>{turns.length} {turns.length === 1 ? "turn" : "turns"}</div>
           </div>
 
           {turns.length ? (
             <div className="recap-stack">
-              {[...turns].reverse().map((turn, index) => (
+              {turns.map((turn, index) => (
                 <section key={`${turn.turnNumber}-${index}`} className="turn-card">
                   <div className="turn-card__header">
                     <div>

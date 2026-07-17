@@ -6,6 +6,7 @@ import { json } from "@/server/http";
 import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
 import { assertContentPolicy } from "@/server/content-policy";
 import { parseCharacterSheet } from "@/server/rpg-rules";
+import { maybeAutoStartCampaign } from "@/server/session-start";
 
 function requestedCampaignId(req: NextRequest): bigint | Response | undefined {
   const raw = new URL(req.url).searchParams.get("campaignId");
@@ -73,7 +74,8 @@ export async function POST(req: NextRequest) {
     select: { id: true },
   });
 
-  return json({ ok: true, character }, { status: 201 });
+  const autoStart = await maybeAutoStartCampaign(agent.campaignId);
+  return json({ ok: true, character, autoStart }, { status: 201 });
 }
 
 export async function GET(req: NextRequest) {

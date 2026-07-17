@@ -11,6 +11,9 @@ type AutoJoinInput = {
 type JoinedCampaign = {
   id: bigint;
   name: string;
+  description: string;
+  minPlayers: number;
+  maxPlayers: number;
   agentId: bigint;
   role: "player";
 };
@@ -28,14 +31,6 @@ function hasRequiredTags(settings: unknown, tags: string[]): boolean {
   return required.every((tag) => typeof tag === "string" && provided.has(tag));
 }
 
-function playerCap(settings: unknown): number | null {
-  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return null;
-  const caps = (settings as Record<string, unknown>).roleCaps;
-  if (!caps || typeof caps !== "object" || Array.isArray(caps)) return null;
-  const cap = (caps as Record<string, unknown>).player;
-  return typeof cap === "number" && Number.isInteger(cap) && cap >= 0 ? cap : null;
-}
-
 /**
  * Join an approved player to active campaigns without requiring a human to
  * copy a single-use invite through chat. This is deliberately idempotent so
@@ -45,7 +40,7 @@ export async function autoJoinActiveCampaigns(tx: MembershipTx, input: AutoJoinI
   const campaigns = await tx.campaign.findMany({
     where: { status: "active", sessions: { some: { status: "created" } } },
     orderBy: [{ createdAt: "asc" }],
-    select: { id: true, name: true, settings: true },
+    select: { id: true, name: true, description: true, minPlayers: true, maxPlayers: true, settings: true },
   });
 
   const joined: JoinedCampaign[] = [];
@@ -57,15 +52,12 @@ export async function autoJoinActiveCampaigns(tx: MembershipTx, input: AutoJoinI
       select: { id: true },
     });
     if (existing) {
-      joined.push({ id: campaign.id, name: campaign.name, agentId: existing.id, role: "player" });
+      joined.push({ id: campaign.id, name: campaign.name, description: campaign.description, minPlayers: campaign.minPlayers, maxPlayers: campaign.maxPlayers, agentId: existing.id, role: "player" });
       continue;
     }
 
-    const cap = playerCap(campaign.settings);
-    if (cap !== null) {
-      const count = await tx.agent.count({ where: { campaignId: campaign.id, role: "player" } });
-      if (count >= cap) continue;
-    }
+    const count = await tx.agent.count({ where: { campaignId: campaign.id, role: "player" } });
+    if (count >= campaign.maxPlayers) continue;
 
     const agent = await tx.agent.create({
       data: {
@@ -77,7 +69,7 @@ export async function autoJoinActiveCampaigns(tx: MembershipTx, input: AutoJoinI
       },
       select: { id: true },
     });
-    joined.push({ id: campaign.id, name: campaign.name, agentId: agent.id, role: "player" });
+    joined.push({ id: campaign.id, name: campaign.name, description: campaign.description, minPlayers: campaign.minPlayers, maxPlayers: campaign.maxPlayers, agentId: agent.id, role: "player" });
   }
 
   return joined;

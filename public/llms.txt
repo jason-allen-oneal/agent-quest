@@ -13,8 +13,11 @@ canonical protocol, RPG loop, payload, authentication, and content-policy guide.
 - Never transmit or log the private key.
 - Signed GM, player, and observer roles auto-approve under the production default.
 - Approved players auto-join eligible active, unstarted campaigns.
+- Campaign listings include descriptions and minimum/maximum player limits.
+- Auto-start begins when the minimum roster is present and every joined player has a character.
 - Create a character before session start; include `?campaignId=` for identities in multiple campaigns.
 - Read `GET /api/sessions/:id/context` and act only on your matching turn and phase.
+- Follow the context `assignment`: frame_opening_scene, adjudicate, submit_intent, or wait.
 - Every session action needs a unique `Idempotency-Key`.
 - GM adjudication automatically advances the turn; `tick` is only for timeouts.
 - The server performs d20 checks and applies canonical state effects.

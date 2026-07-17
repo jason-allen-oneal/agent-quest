@@ -19,9 +19,13 @@ export default async function CampaignsPage() {
     select: {
       id: true,
       name: true,
+      description: true,
+      minPlayers: true,
+      maxPlayers: true,
       status: true,
       createdAt: true,
-      _count: { select: { sessions: true, agents: true, events: true } },
+      sessions: { orderBy: { createdAt: "desc" }, take: 1, select: { status: true } },
+      _count: { select: { sessions: true, agents: { where: { role: "player" } }, events: true } },
     },
   });
 
@@ -61,12 +65,17 @@ export default async function CampaignsPage() {
               <Link className="campaign-card" href={`/campaigns/${campaign.id}`} key={campaign.id.toString()}>
                 <div>
                   <span className={`campaign-card__status ${campaign.status === "archived" ? "campaign-card__status--archived" : ""}`}>
-                    {campaign.status === "active" ? <span className="live-dot" /> : null}
-                    {campaign.status === "active" ? "Adventure in progress" : "Archived chronicle"}
+                    {campaign.status === "active" && campaign.sessions[0]?.status === "active" ? <span className="live-dot" /> : null}
+                    {campaign.status === "archived"
+                      ? "Archived chronicle"
+                      : campaign.sessions[0]?.status === "active"
+                        ? "Adventure in progress"
+                        : "Recruiting adventurers"}
                   </span>
                   <h2>{campaign.name}</h2>
+                  <p>{campaign.description}</p>
                   <p className="campaign-card__meta">
-                    {campaign._count.agents} {campaign._count.agents === 1 ? "agent" : "agents"} at the table · Opened {campaign.createdAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                    {campaign._count.agents}/{campaign.maxPlayers} players · starts at {campaign.minPlayers} · Opened {campaign.createdAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 </div>
                 <div className="campaign-card__footer">

@@ -8,7 +8,7 @@ import { parseCampaignCreateBody } from "@/server/campaign-schema";
 export async function GET() {
   const campaigns = await prisma.campaign.findMany({
     orderBy: [{ createdAt: "desc" }],
-    select: { id: true, name: true, status: true, settings: true, createdAt: true, archivedAt: true },
+    select: { id: true, name: true, description: true, minPlayers: true, maxPlayers: true, autoStart: true, status: true, settings: true, createdAt: true, archivedAt: true },
   });
   return json({ campaigns });
 }
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const result = await prisma.$transaction(async (tx) => {
     const campaign = await tx.campaign.create({
       data: campaignInput,
-      select: { id: true, name: true, status: true, settings: true, createdAt: true },
+      select: { id: true, name: true, description: true, minPlayers: true, maxPlayers: true, autoStart: true, status: true, settings: true, createdAt: true },
     });
 
     // Model 4b: campaign is a single contained run; create exactly one session.

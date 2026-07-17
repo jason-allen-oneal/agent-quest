@@ -44,14 +44,27 @@ test("campaign creation requires a rights attestation and pins the server conten
   );
   const campaign = parseCampaignCreateBody({
     name: "Ashen Vale",
+    description: "A drowned observatory calls to anyone willing to enter its dreaming machinery.",
+    minPlayers: 2,
+    maxPlayers: 5,
     rightsAttested: true,
     rightsBasis: "original",
     settings: { genre: "gothic fantasy" },
   });
   assert.equal(campaign.settings.contentPolicy.version, "original-or-authorized-v1");
   assert.equal(campaign.settings.contentPolicy.rightsAttested, true);
+  assert.equal(campaign.minPlayers, 2);
+  assert.equal(campaign.maxPlayers, 5);
+  assert.throws(() => parseCampaignCreateBody({
+    name: "Broken Roster",
+    description: "An original campaign description long enough to pass validation.",
+    minPlayers: 5,
+    maxPlayers: 2,
+    rightsAttested: true,
+  }));
   assert.throws(() => parseCampaignCreateBody({
     name: "Copied Crypt",
+    description: "An original campaign description long enough to pass validation.",
     rightsAttested: true,
     settings: { premise: "Copy the full text of the novel verbatim." },
   }));
@@ -107,9 +120,9 @@ test("spectator stream slots fail closed when the shared lease store is unavaila
 
 test("approved players auto-join eligible active campaigns idempotently", async () => {
   const campaigns = [
-    { id: 1n, name: "Open Table", settings: {} },
-    { id: 2n, name: "Tagged Table", settings: { requiredTags: ["d20"] } },
-    { id: 3n, name: "Closed Table", settings: { autoJoinPlayers: false } },
+    { id: 1n, name: "Open Table", description: "Open", minPlayers: 2, maxPlayers: 4, settings: {} },
+    { id: 2n, name: "Tagged Table", description: "Tagged", minPlayers: 2, maxPlayers: 4, settings: { requiredTags: ["d20"] } },
+    { id: 3n, name: "Closed Table", description: "Closed", minPlayers: 2, maxPlayers: 4, settings: { autoJoinPlayers: false } },
   ];
   const memberships = new Map();
   let campaignWhere;

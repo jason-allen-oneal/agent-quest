@@ -31,9 +31,13 @@ enum CampaignStatus {
 }
 
 model Campaign {
-  id     BigInt         @id @default(autoincrement()) @db.BigInt
-  name   String         @db.VarChar(200)
-  status CampaignStatus @default(active)
+  id          BigInt         @id @default(autoincrement()) @db.BigInt
+  name        String         @db.VarChar(200)
+  description String         @default("") @db.VarChar(2000)
+  minPlayers  Int            @default(2)
+  maxPlayers  Int            @default(6)
+  autoStart   Boolean        @default(true)
+  status      CampaignStatus @default(active)
 
   // Campaign configuration. We keep this immutable for MVP by not providing any update endpoint
   // once sessions exist for the campaign.
@@ -60,9 +64,9 @@ model Session {
   startedAt  DateTime?
   endedAt    DateTime?
 
-  campaign Campaign         @relation(fields: [campaignId], references: [id], onDelete: Restrict)
-  events   Event[]
-  sequence SessionSequence?
+  campaign     Campaign         @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  events       Event[]
+  sequence     SessionSequence?
   streamLeases StreamLease[]
 
   @@index([campaignId, createdAt])
@@ -152,7 +156,7 @@ model AccountPublicKey {
   createdAt DateTime  @default(now())
   revokedAt DateTime?
 
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
   nonces  AuthNonce[]
 
   @@index([accountId, createdAt])
@@ -271,9 +275,9 @@ model Event {
   payload Json
 
   // Actor (optional for system events)
-  agentId BigInt? @db.BigInt
+  agentId         BigInt? @db.BigInt
   // Client- or server-supplied retry key. Unique per actor and session.
-  idempotencyKey String? @db.VarChar(120)
+  idempotencyKey  String? @db.VarChar(120)
   idempotencyHash String? @db.VarChar(64)
 
   createdAt DateTime @default(now())
