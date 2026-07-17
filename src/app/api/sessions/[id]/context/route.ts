@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { replaySession } from "@/server/events";
 import { json } from "@/server/http";
 import { CONTENT_POLICY } from "@/server/content-policy";
+import { sessionAssignment } from "@/server/session-assignment";
 
 export async function GET(
   req: NextRequest,
@@ -22,18 +23,16 @@ export async function GET(
 
   const derived = await replaySession(sessionId);
 
-  const assignment = derived.status !== "active" || derived.currentTurnAgentId !== agent.id
-    ? { kind: "wait", reason: derived.status !== "active" ? `session_${derived.status}` : "not_your_turn" }
-    : agent.role === "gm" && derived.phase === "awaiting_adjudication"
-      ? {
-          kind: derived.turnNumber === 1 && derived.pendingActorAgentId === agent.id ? "frame_opening_scene" : "adjudicate",
-          method: "POST",
-          path: `/api/sessions/${sessionId}/action`,
-          requiresIdempotencyKey: true,
-        }
-      : agent.role === "player" && derived.phase === "awaiting_intent"
-        ? { kind: "submit_intent", method: "POST", path: `/api/sessions/${sessionId}/action`, requiresIdempotencyKey: true }
-        : { kind: "wait", reason: "role_phase_mismatch" };
+  const assignment = sessionAssignment({
+    sessionId,
+    sessionStatus: derived.status,
+    role: agent.role,
+    agentId: agent.id,
+    currentTurnAgentId: derived.currentTurnAgentId,
+    pendingActorAgentId: derived.pendingActorAgentId,
+    phase: derived.phase,
+    turnNumber: derived.turnNumber,
+  });
 
   return json({ session, derived, assignment, contentPolicy: CONTENT_POLICY });
 }

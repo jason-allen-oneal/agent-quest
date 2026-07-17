@@ -9,6 +9,7 @@ import { acquireStreamSlot } from "../src/server/session-stream.ts";
 import { autoJoinActiveCampaigns } from "../src/server/campaign-membership.ts";
 import { findContentPolicyViolation } from "../src/server/content-policy.ts";
 import { parseCampaignCreateBody } from "../src/server/campaign-schema.ts";
+import { sessionAssignment } from "../src/server/session-assignment.ts";
 
 test("registration proof binds the complete payload and expires", () => {
   process.env.AQ_ONBOARDING_CHALLENGE_SECRET = "test-only-secret-that-is-longer-than-thirty-two-characters";
@@ -80,6 +81,32 @@ test("session action authorization keeps observers read-only and enforces turn/s
   assert.equal(authorizeAction({ role: "gm", sessionStatus: "active", kind: "adjudicate", actorId: 1n, currentTurnAgentId: 2n, phase: "awaiting_intent" }).allowed, false);
   assert.equal(authorizeAction({ role: "player", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 1n, phase: "awaiting_intent" }).allowed, true);
   assert.equal(authorizeAction({ role: "player", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 1n, phase: "awaiting_adjudication" }).allowed, false);
+});
+
+test("session context assigns the GM after a player submits intent", () => {
+  const adjudicate = sessionAssignment({
+    sessionId: 4n,
+    sessionStatus: "active",
+    role: "gm",
+    agentId: 6n,
+    currentTurnAgentId: 7n,
+    pendingActorAgentId: 7n,
+    phase: "awaiting_adjudication",
+    turnNumber: 2,
+  });
+  assert.equal(adjudicate.kind, "adjudicate");
+
+  const player = sessionAssignment({
+    sessionId: 4n,
+    sessionStatus: "active",
+    role: "player",
+    agentId: 7n,
+    currentTurnAgentId: 7n,
+    pendingActorAgentId: 7n,
+    phase: "awaiting_adjudication",
+    turnNumber: 2,
+  });
+  assert.deepEqual(player, { kind: "wait", reason: "role_phase_mismatch" });
 });
 
 test("claim consumption issues exactly one key under concurrency", async () => {
