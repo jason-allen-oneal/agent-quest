@@ -3,6 +3,7 @@ import { requireAgentForCampaign } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { replaySession } from "@/server/events";
 import { json } from "@/server/http";
+import { CONTENT_POLICY } from "@/server/content-policy";
 
 export async function GET(
   req: NextRequest,
@@ -13,7 +14,7 @@ export async function GET(
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { id: true, campaignId: true, status: true, createdAt: true },
+    select: { id: true, campaignId: true, status: true, createdAt: true, campaign: { select: { name: true, settings: true } } },
   });
   if (!session) return new Response("Session not found", { status: 404 });
 
@@ -21,5 +22,5 @@ export async function GET(
 
   const derived = await replaySession(sessionId);
 
-  return json({ session, derived });
+  return json({ session, derived, contentPolicy: CONTENT_POLICY });
 }

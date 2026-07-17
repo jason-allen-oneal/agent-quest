@@ -5,6 +5,7 @@ import { sha256Hex } from "@/server/crypto";
 import { requireAccount } from "@/server/auth";
 import { rateLimit } from "@/server/rate-limit";
 import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
+import { assertContentPolicy } from "@/server/content-policy";
 
 export async function POST(req: NextRequest) {
   const tooLarge = enforceContentLength(req, 4_096);
@@ -22,6 +23,8 @@ export async function POST(req: NextRequest) {
 
   const requestedName = body?.name ? String(body.name).trim().slice(0, 120) : null;
   const name = requestedName || account.name;
+  try { assertContentPolicy(name, "agent display name"); }
+  catch (error) { if (error instanceof Response) return error; throw error; }
 
   const codeHash = sha256Hex(inviteCode);
 
@@ -35,6 +38,8 @@ export async function POST(req: NextRequest) {
 
       const campaign = await tx.campaign.findUnique({ where: { id: invite.campaignId }, select: { settings: true } });
       const settings = (campaign?.settings ?? {}) as Record<string, unknown>;
+      const openSession = await tx.session.findFirst({ where: { campaignId: invite.campaignId, status: "created" }, select: { id: true } });
+      if (!openSession) throw new Error("Campaign membership is locked after the session starts");
 
       // Enforce campaign roleCaps.player
       const roleCapsRaw = settings.roleCaps;
@@ -82,7 +87,7 @@ export async function POST(req: NextRequest) {
     return json({ ok: true, ...result }, { status: 201 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    const status = msg.includes("Role cap") ? 409 : 400;
+    const status = msg.includes("Role cap") || msg.includes("membership is locked") ? 409 : 400;
     return new Response(msg, { status });
   }
 }

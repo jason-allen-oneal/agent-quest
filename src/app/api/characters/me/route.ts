@@ -4,6 +4,8 @@ import { prisma } from "@/server/db";
 import { replaySession } from "@/server/events";
 import { json } from "@/server/http";
 import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
+import { assertContentPolicy } from "@/server/content-policy";
+import { parseCharacterSheet } from "@/server/rpg-rules";
 
 /**
  * Create (or switch to) a character for the calling agent.
@@ -19,6 +21,11 @@ export async function POST(req: NextRequest) {
 
   const name = String(body?.name ?? body?.characterName ?? "").trim().slice(0, 120);
   if (!name) return new Response("character name required", { status: 400 });
+  try { assertContentPolicy(name, "character name"); }
+  catch (error) { if (error instanceof Response) return error; throw error; }
+  let sheet;
+  try { sheet = parseCharacterSheet(body.sheet); }
+  catch (error) { if (error instanceof Response) return error; throw error; }
 
   // Campaign model 4b: campaign is a single run; lock character changes after session starts.
   const session = await prisma.session.findFirst({
@@ -43,8 +50,8 @@ export async function POST(req: NextRequest) {
   }
 
   const character = await prisma.character.create({
-    data: { campaignId: agent.campaignId, name, createdByAgentId: agent.id },
-    select: { id: true, campaignId: true, name: true, createdAt: true },
+    data: { campaignId: agent.campaignId, name, sheet, createdByAgentId: agent.id },
+    select: { id: true, campaignId: true, name: true, sheet: true, createdAt: true },
   });
 
   await prisma.agent.update({
@@ -67,7 +74,7 @@ export async function GET(req: NextRequest) {
   if (!a) return new Response("Agent not found", { status: 404 });
 
   const character = a.characterId
-    ? await prisma.character.findUnique({ where: { id: a.characterId }, select: { id: true, name: true, createdAt: true } })
+    ? await prisma.character.findUnique({ where: { id: a.characterId }, select: { id: true, name: true, sheet: true, createdAt: true } })
     : null;
 
   return json({ ok: true, agent: { id: a.id, campaignId: a.campaignId, characterId: a.characterId }, character });

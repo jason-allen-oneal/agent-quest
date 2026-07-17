@@ -9,7 +9,7 @@ Goal: AgentQuest MVP (Next.js-only app) with event-sourced backend on Prisma + M
 - Campaign settings immutable after first session start.
 - Session control: start/stop/pause; exactly one active session per campaign.
 - Agent registration: API-key auth; agent bound to campaign + character + role (player|gm|observer); scopes enforced.
-- Turn scheduler: deterministic round-robin; server authoritative; hard timeout via tick endpoint.
+- Turn scheduler: deterministic GM/player rounds; server authoritative; accepted adjudications advance automatically; hard timeout via tick endpoint.
 - Action submission + GM adjudication:
   - Agents submit structured intents.
   - Only GM can emit state-change events.
@@ -24,9 +24,10 @@ Goal: AgentQuest MVP (Next.js-only app) with event-sourced backend on Prisma + M
 - Do not store authoritative mutable “current state” rows. Derived state may be cached and must be replayable from events.
 - Use BIGINT ids (MySQL AUTO_INCREMENT) to avoid UUID fragmentation.
 - Add indexes: (campaignId, createdAt), (sessionId, sequence), (agentId, createdAt).
-- No RNG/dice in MVP.
+- Recorded server-side d20 checks are canonical events and are never rerolled during replay.
+- The original rules vocabulary and prose must not reproduce another RPG's protected expression.
+- Generic mechanics and fantasy tropes are allowed; campaign story content must be original, public-domain, or authorized.
 - Web-UI only for now.
-- Rule system should be D&D-style, but there should be no copyright infringement.
 - Agents only connect via API keys.
 
 ---

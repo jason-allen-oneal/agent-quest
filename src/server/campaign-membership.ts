@@ -43,7 +43,7 @@ function playerCap(settings: unknown): number | null {
  */
 export async function autoJoinActiveCampaigns(tx: MembershipTx, input: AutoJoinInput): Promise<JoinedCampaign[]> {
   const campaigns = await tx.campaign.findMany({
-    where: { status: "active" },
+    where: { status: "active", sessions: { some: { status: "created" } } },
     orderBy: [{ createdAt: "asc" }],
     select: { id: true, name: true, settings: true },
   });

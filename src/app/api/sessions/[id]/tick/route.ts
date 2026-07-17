@@ -1,18 +1,19 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAgentForCampaign } from "@/server/auth";
-import { appendEvent, replaySession } from "@/server/events";
+import { appendEvents, replaySession, type AppendEventInput } from "@/server/events";
 import { json } from "@/server/http";
+import { nextTurn, orderedTurnActors, type TurnActor } from "@/server/turns";
 
 const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS ?? 120_000);
 
-async function getTurnOrder(campaignId: bigint): Promise<bigint[]> {
+async function getTurnOrder(campaignId: bigint): Promise<TurnActor[]> {
   const agents = await prisma.agent.findMany({
     where: { campaignId, role: { in: ["gm", "player"] } },
     orderBy: [{ role: "asc" }, { id: "asc" }], // gm (alphabetically) then players; stable
-    select: { id: true },
+    select: { id: true, role: true },
   });
-  return agents.map((a) => a.id);
+  return orderedTurnActors(agents.map((a) => ({ id: a.id, role: a.role as "gm" | "player" })));
 }
 
 export async function POST(
@@ -42,22 +43,39 @@ export async function POST(
   const order = await getTurnOrder(session.campaignId);
   if (!order.length) return json({ ok: true, skipped: "no_agents" });
 
-  const idx = order.findIndex((a) => a === derived.currentTurnAgentId);
-  const next = order[(idx + 1 + order.length) % order.length]!;
-
-  const event = await appendEvent({
+  const next = nextTurn(order, derived.currentTurnAgentId, derived.roundNumber);
+  const now = Date.now();
+  const events: AppendEventInput[] = [{
     campaignId: session.campaignId,
     sessionId,
     agentId: agent.id,
     idempotencyKey: `tick-turn-${derived.turnNumber}`,
+    type: "TURN_SKIPPED",
+    payload: {
+      turnNumber: derived.turnNumber,
+      roundNumber: derived.roundNumber,
+      agentId: derived.currentTurnAgentId.toString(),
+      phase: derived.phase,
+      skippedAtMs: now,
+      reason: derived.phase === "awaiting_adjudication" ? "adjudication_timeout" : "intent_timeout",
+    },
+  }];
+  if (next.wrapped) events.push({ campaignId: session.campaignId, sessionId, agentId: agent.id, type: "ROUND_STARTED", payload: { roundNumber: next.roundNumber, startedAtMs: now } });
+  events.push({
+    campaignId: session.campaignId,
+    sessionId,
+    agentId: next.actor.id,
     type: "TURN_ADVANCED",
     payload: {
       turnNumber: derived.turnNumber + 1,
-      agentId: next.toString(),
-      startedAtMs: Date.now(),
+      roundNumber: next.roundNumber,
+      agentId: next.actor.id.toString(),
+      phase: next.phase,
+      startedAtMs: now,
       reason: "timeout",
     },
   });
+  const appended = await appendEvents(events);
 
-  return json({ ok: true, expired: true, event });
+  return json({ ok: true, expired: true, events: appended, nextTurn: { agentId: next.actor.id, roundNumber: next.roundNumber, phase: next.phase } });
 }

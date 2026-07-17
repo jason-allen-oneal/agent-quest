@@ -7,6 +7,8 @@ import { issueRegistrationChallenge, parseRegistration, verifyRegistrationChalle
 import { getClientIp } from "../src/server/rate-limit.ts";
 import { acquireStreamSlot } from "../src/server/session-stream.ts";
 import { autoJoinActiveCampaigns } from "../src/server/campaign-membership.ts";
+import { findContentPolicyViolation } from "../src/server/content-policy.ts";
+import { parseCampaignCreateBody } from "../src/server/campaign-schema.ts";
 
 test("registration proof binds the complete payload and expires", () => {
   process.env.AQ_ONBOARDING_CHALLENGE_SECRET = "test-only-secret-that-is-longer-than-thirty-two-characters";
@@ -25,14 +27,46 @@ test("action schema rejects arbitrary nested JSON and oversized text", () => {
   assert.throws(() => parseActionBody({ kind: "adjudicate", adjudication: { result: "x".repeat(1201) } }));
 });
 
+test("content policy blocks explicit copying and named-creator imitation without blocking genres", () => {
+  assert.match(findContentPolicyViolation("Copy the full text of the novel verbatim."), /copying/);
+  assert.match(findContentPolicyViolation("Write this in the exact style of Famous Writer."), /style imitation/);
+  assert.equal(findContentPolicyViolation("Run an original gothic horror mystery with tragic heroes."), null);
+  assert.throws(
+    () => parseActionBody({ kind: "adjudicate", adjudication: { narration: "Reproduce the screenplay verbatim." } }),
+    (error) => error instanceof Response && error.status === 422,
+  );
+});
+
+test("campaign creation requires a rights attestation and pins the server content policy", () => {
+  assert.throws(
+    () => parseCampaignCreateBody({ name: "Ashen Vale" }),
+    (error) => error instanceof Response && error.status === 400,
+  );
+  const campaign = parseCampaignCreateBody({
+    name: "Ashen Vale",
+    rightsAttested: true,
+    rightsBasis: "original",
+    settings: { genre: "gothic fantasy" },
+  });
+  assert.equal(campaign.settings.contentPolicy.version, "original-or-authorized-v1");
+  assert.equal(campaign.settings.contentPolicy.rightsAttested, true);
+  assert.throws(() => parseCampaignCreateBody({
+    name: "Copied Crypt",
+    rightsAttested: true,
+    settings: { premise: "Copy the full text of the novel verbatim." },
+  }));
+});
+
 test("session action authorization keeps observers read-only and enforces turn/state", () => {
-  assert.equal(authorizeAction({ role: "observer", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 1n }).allowed, false);
-  assert.equal(authorizeAction({ role: "player", sessionStatus: "paused", kind: "intent", actorId: 1n, currentTurnAgentId: 1n }).allowed, false);
-  assert.equal(authorizeAction({ role: "player", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 2n }).allowed, false);
-  assert.equal(authorizeAction({ role: "player", sessionStatus: "active", kind: "adjudicate", actorId: 1n, currentTurnAgentId: 1n }).allowed, false);
-  assert.equal(authorizeAction({ role: "gm", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 1n }).allowed, false);
-  assert.equal(authorizeAction({ role: "gm", sessionStatus: "active", kind: "adjudicate", actorId: 1n, currentTurnAgentId: 2n }).allowed, true);
-  assert.equal(authorizeAction({ role: "player", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 1n }).allowed, true);
+  assert.equal(authorizeAction({ role: "observer", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 1n, phase: "awaiting_intent" }).allowed, false);
+  assert.equal(authorizeAction({ role: "player", sessionStatus: "paused", kind: "intent", actorId: 1n, currentTurnAgentId: 1n, phase: "awaiting_intent" }).allowed, false);
+  assert.equal(authorizeAction({ role: "player", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 2n, phase: "awaiting_intent" }).allowed, false);
+  assert.equal(authorizeAction({ role: "player", sessionStatus: "active", kind: "adjudicate", actorId: 1n, currentTurnAgentId: 1n, phase: "awaiting_adjudication" }).allowed, false);
+  assert.equal(authorizeAction({ role: "gm", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 1n, phase: "awaiting_intent" }).allowed, false);
+  assert.equal(authorizeAction({ role: "gm", sessionStatus: "active", kind: "adjudicate", actorId: 1n, currentTurnAgentId: 2n, phase: "awaiting_adjudication" }).allowed, true);
+  assert.equal(authorizeAction({ role: "gm", sessionStatus: "active", kind: "adjudicate", actorId: 1n, currentTurnAgentId: 2n, phase: "awaiting_intent" }).allowed, false);
+  assert.equal(authorizeAction({ role: "player", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 1n, phase: "awaiting_intent" }).allowed, true);
+  assert.equal(authorizeAction({ role: "player", sessionStatus: "active", kind: "intent", actorId: 1n, currentTurnAgentId: 1n, phase: "awaiting_adjudication" }).allowed, false);
 });
 
 test("claim consumption issues exactly one key under concurrency", async () => {
@@ -78,9 +112,10 @@ test("approved players auto-join eligible active campaigns idempotently", async 
     { id: 3n, name: "Closed Table", settings: { autoJoinPlayers: false } },
   ];
   const memberships = new Map();
+  let campaignWhere;
   let nextAgent = 10n;
   const tx = {
-    campaign: { async findMany() { return campaigns; } },
+    campaign: { async findMany(args) { campaignWhere = args.where; return campaigns; } },
     agent: {
       async findUnique({ where }) { return memberships.get(`${where.accountId_campaignId.accountId}:${where.accountId_campaignId.campaignId}`) ?? null; },
       async count() { return 0; },
@@ -96,4 +131,5 @@ test("approved players auto-join eligible active campaigns idempotently", async 
   assert.deepEqual(first.map((item) => item.id), [1n, 2n]);
   assert.deepEqual(second.map((item) => item.id), [1n, 2n]);
   assert.equal(memberships.size, 2);
+  assert.deepEqual(campaignWhere.sessions, { some: { status: "created" } });
 });

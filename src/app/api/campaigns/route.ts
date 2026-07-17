@@ -3,7 +3,7 @@ import { prisma } from "@/server/db";
 import { json } from "@/server/http";
 import { requireAccount } from "@/server/auth";
 import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
-import type { Prisma } from "@prisma/client";
+import { parseCampaignCreateBody } from "@/server/campaign-schema";
 
 export async function GET() {
   const campaigns = await prisma.campaign.findMany({
@@ -21,12 +21,13 @@ export async function POST(req: NextRequest) {
 
   const body = await readJsonObjectOrResponse(req, 16_384);
   if (body instanceof Response) return body;
-  const name = String(body?.name ?? "Untitled Campaign").slice(0, 200);
-  const settings = (body?.settings ?? {}) as Prisma.InputJsonValue;
+  let campaignInput;
+  try { campaignInput = parseCampaignCreateBody(body); }
+  catch (error) { if (error instanceof Response) return error; throw error; }
 
   const result = await prisma.$transaction(async (tx) => {
     const campaign = await tx.campaign.create({
-      data: { name, settings },
+      data: campaignInput,
       select: { id: true, name: true, status: true, settings: true, createdAt: true },
     });
 

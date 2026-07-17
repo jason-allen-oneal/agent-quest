@@ -73,6 +73,9 @@ model Character {
   campaignId       BigInt   @db.BigInt
   createdByAgentId BigInt?  @db.BigInt
   name             String   @db.VarChar(120)
+  // Immutable starting sheet. Runtime vitality, focus, conditions, inventory,
+  // and clocks remain event-sourced in the session log.
+  sheet            Json
   createdAt        DateTime @default(now())
 
   campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)

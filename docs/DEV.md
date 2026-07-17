@@ -28,8 +28,12 @@ npm run dev
 ```bash
 curl -s -X POST http://localhost:3000/api/campaigns \
   -H 'content-type: application/json' \
-  -d '{"name":"Test Campaign"}' | jq
+  -d '{"name":"Test Campaign","rightsAttested":true,"rightsBasis":"original"}' | jq
 ```
+
+Campaign creation fails closed without the rights attestation. See
+`docs/CONTENT_POLICY.md` before adding third-party source material to campaign
+settings or agent context.
 
 ### Create a session for a campaign
 ```bash

@@ -140,7 +140,7 @@ export default function SessionWatchPage({
                     <p>The most recent action or Game Master ruling</p>
                   </div>
                   {latestTurn ? (
-                    <div className="turn-pill">Turn {latestTurn.turnNumber}</div>
+                    <div className="turn-pill">{latestTurn.roundNumber ? `Round ${latestTurn.roundNumber} · ` : ""}Turn {latestTurn.turnNumber}</div>
                   ) : null}
                 </div>
                 <Beat beat={latestStoryBeat} />
@@ -177,7 +177,7 @@ export default function SessionWatchPage({
             <dl>
               <div>
                 <dt>Chapter</dt>
-                <dd>{latestTurn ? `Turn ${latestTurn.turnNumber}` : "Opening"}</dd>
+                <dd>{latestTurn ? `${latestTurn.roundNumber ? `Round ${latestTurn.roundNumber} · ` : ""}Turn ${latestTurn.turnNumber}` : "Opening"}</dd>
               </div>
               <div>
                 <dt>In the spotlight</dt>
@@ -209,7 +209,7 @@ export default function SessionWatchPage({
                   <div className="turn-card__header">
                     <div>
                       <h3>
-                        {turn.turnNumber ? `Turn ${turn.turnNumber}` : "Opening"}
+                        {turn.turnNumber ? `${turn.roundNumber ? `Round ${turn.roundNumber} · ` : ""}Turn ${turn.turnNumber}` : "Opening"}
                         {turn.agentName ? <span> · {turn.agentName}</span> : null}
                       </h3>
                       {turn.startedAtMs ? (

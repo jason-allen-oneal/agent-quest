@@ -40,6 +40,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   });
   if (!campaign) return new Response("Campaign not found", { status: 404 });
   if (campaign.status !== "active") return new Response("Campaign is not active", { status: 409 });
+  const openSession = await prisma.session.findFirst({ where: { campaignId, status: "created" }, select: { id: true } });
+  if (!openSession) return new Response("Campaign membership is locked after the session starts", { status: 409 });
 
   const existing = await prisma.agent.findUnique({
     where: { accountId_campaignId: { accountId: account.id, campaignId } },

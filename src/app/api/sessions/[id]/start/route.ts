@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAgentForCampaign } from "@/server/auth";
-import { appendEvent } from "@/server/events";
+import { appendEvents, type AppendEventInput } from "@/server/events";
 import { json } from "@/server/http";
+import { parseCharacterSheet } from "@/server/rpg-rules";
+import { orderedTurnActors } from "@/server/turns";
 
 export async function POST(
   req: NextRequest,
@@ -23,6 +25,54 @@ export async function POST(
   if (session.status === "active") return json({ ok: true, session, idempotent: true });
   if (session.status !== "created" && session.status !== "paused") return new Response("Stopped sessions cannot be restarted", { status: 409 });
   const previousStatus = session.status;
+  const now = Date.now();
+  const events: AppendEventInput[] = [{
+    campaignId: session.campaignId,
+    sessionId,
+    agentId: agent.id,
+    idempotencyKey: previousStatus === "created" ? "session-started" : `session-resumed-${now}`,
+    type: "SESSION_STARTED",
+    payload: { startedAtMs: now },
+  }];
+
+  if (previousStatus === "created") {
+    const members = await prisma.agent.findMany({
+      where: { campaignId: session.campaignId, role: { in: ["gm", "player"] } },
+      select: { id: true, role: true, name: true, character: { select: { name: true, sheet: true } } },
+    });
+    const order = orderedTurnActors(members.map((member) => ({ id: member.id, role: member.role as "gm" | "player" })));
+    const gm = order.find((member) => member.role === "gm");
+    if (!gm) return new Response("A GM is required to start the session", { status: 409 });
+    for (const member of members.filter((candidate) => candidate.role === "player")) {
+      const sheet = parseCharacterSheet(member.character?.sheet);
+      events.push({
+        campaignId: session.campaignId,
+        sessionId,
+        agentId: member.id,
+        type: "ACTOR_INITIALIZED",
+        payload: {
+          actor: {
+            agentId: member.id.toString(),
+            name: member.character?.name ?? member.name,
+            ...sheet,
+            vitality: sheet.maxVitality,
+            focus: sheet.maxFocus,
+            conditions: [],
+          },
+        },
+      });
+    }
+    events.push(
+      { campaignId: session.campaignId, sessionId, agentId: agent.id, type: "ROUND_STARTED", payload: { roundNumber: 1, startedAtMs: now } },
+      {
+        campaignId: session.campaignId,
+        sessionId,
+        agentId: gm.id,
+        type: "TURN_ADVANCED",
+        payload: { turnNumber: 1, roundNumber: 1, agentId: gm.id.toString(), phase: "awaiting_adjudication", startedAtMs: now, reason: "session_started" },
+      },
+    );
+  }
 
   // Mark status (cache) + append canonical event.
   const transitioned = await prisma.session.updateMany({
@@ -31,26 +81,7 @@ export async function POST(
   });
   if (transitioned.count !== 1) return json({ ok: true, idempotent: true });
 
-  await appendEvent({
-    campaignId: session.campaignId,
-    sessionId,
-    agentId: agent.id,
-    idempotencyKey: previousStatus === "created" ? "session-started" : `session-resumed-${Date.now()}`,
-    type: "SESSION_STARTED",
-    payload: { startedAtMs: Date.now() },
-  });
-
-  if (previousStatus === "created") {
-    // Initialize the first turn to GM once.
-    await appendEvent({
-      campaignId: session.campaignId,
-      sessionId,
-      agentId: agent.id,
-      idempotencyKey: "session-first-turn",
-      type: "TURN_ADVANCED",
-      payload: { turnNumber: 1, agentId: agent.id.toString(), startedAtMs: Date.now() },
-    });
-  }
+  await appendEvents(events);
 
   return json({ ok: true });
 }

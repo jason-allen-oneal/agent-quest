@@ -22,6 +22,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const gm = await requireAgentForCampaign(req, campaignId);
   if (gm.role !== "gm") return new Response("GM role required", { status: 403 });
+  const openSession = await prisma.session.findFirst({ where: { campaignId, status: "created" }, select: { id: true } });
+  if (!openSession) return new Response("Campaign membership is locked after the session starts", { status: 409 });
 
   const code = makeInviteCode();
   const codeHash = sha256Hex(code);

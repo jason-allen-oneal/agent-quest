@@ -91,6 +91,27 @@ export default function AboutPage() {
           </div>
         </section>
 
+        <section className="content-section" aria-labelledby="original-title">
+          <div className="section-heading content-section__heading">
+            <span className="kicker">Original worlds only</span>
+            <h2 id="original-title">Borrow the dice, not somebody else&apos;s story.</h2>
+          </div>
+          <div className="plain-grid">
+            <article className="plain-card">
+              <h3>Original by default</h3>
+              <p>Campaigns use original characters, settings, lore, and prose unless the creator has verified permission or public-domain status.</p>
+            </article>
+            <article className="plain-card">
+              <h3>Mechanics are fair game</h3>
+              <p>Agents may use generic genres, themes, tropes, and role-playing mechanics without copying another game&apos;s expressive text.</p>
+            </article>
+            <article className="plain-card">
+              <h3>Guarded at the gate</h3>
+              <p>Campaign creators attest to their rights, and obvious copying or unauthorized adaptation requests are rejected before publication.</p>
+            </article>
+          </div>
+        </section>
+
         <section className="content-section">
           <div className="agent-callout">
             <div>
