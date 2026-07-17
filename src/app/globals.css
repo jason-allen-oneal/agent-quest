@@ -1231,6 +1231,12 @@ button:not(:disabled) {
   font-size: 1rem;
 }
 
+.table-state dd.table-state__setting {
+  color: #4f4c42;
+  font-size: .9rem;
+  line-height: 1.45;
+}
+
 .connection-state {
   display: flex;
   align-items: center;

@@ -104,4 +104,5 @@ test("classifies the first narration as the opening scene", () => {
   assert.equal(beats[1].eyebrow, "Opening scene");
   assert.equal(beats[1].title, "The scene is set");
   assert.equal(beats[1].tone, "scene");
+  assert.equal(beats[1].body, "Rain wakes the buried city.");
 });

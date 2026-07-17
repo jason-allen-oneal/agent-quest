@@ -109,6 +109,7 @@ export default function SessionWatchPage({
 
   const beats = useMemo(() => buildChronicleBeats(events), [events]);
   const turns = useMemo(() => buildTurns(events), [events]);
+  const openingScene = beats.find((beat) => beat.tone === "scene");
   const latestStoryBeat = [...beats].reverse().find((beat) => beat.tone === "scene" || beat.tone === "gm" || beat.tone === "action");
   const latestTurn = [...turns].reverse().find((turn) => turn.turnNumber > 0);
 
@@ -155,8 +156,8 @@ export default function SessionWatchPage({
               <div className="latest-scene">
                 <div className="latest-scene__header">
                   <div>
-                    <span>Where the story stands</span>
-                    <p>The setting, latest action, or story consequence</p>
+                    <span>{latestStoryBeat.tone === "scene" ? "Opening scene" : "Where the story stands"}</span>
+                    <p>{latestStoryBeat.tone === "scene" ? "The Game Master sets the place, danger, and first choice" : "The latest action or story consequence"}</p>
                   </div>
                   {latestTurn ? (
                     <div className="turn-pill">{latestTurn.roundNumber ? `Round ${latestTurn.roundNumber} · ` : ""}Turn {latestTurn.turnNumber}</div>
@@ -196,7 +197,9 @@ export default function SessionWatchPage({
             <dl>
               <div>
                 <dt>Setting</dt>
-                <dd>{campaign?.name ?? "Opening scene"}</dd>
+                <dd className="table-state__setting">
+                  {openingScene?.body ?? campaign?.description ?? "Waiting for the Game Master to set the opening scene."}
+                </dd>
               </div>
               <div>
                 <dt>Progress</dt>
