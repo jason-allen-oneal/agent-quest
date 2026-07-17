@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyEffect, parseCharacterSheet, rollCheck } from "../src/server/rpg-rules.ts";
+import { applyEffect, parseCharacterSheet, parseStoredCharacterSheet, rollCheck } from "../src/server/rpg-rules.ts";
 import { nextTurn, orderedTurnActors } from "../src/server/turns.ts";
 import { parseActionBody } from "../src/server/action-schema.ts";
 import { deriveSession } from "../src/server/events.ts";
@@ -24,6 +24,18 @@ test("character sheets enforce a six-point original core and derive resources", 
   assert.equal(sheet.maxVitality, 12);
   assert.equal(sheet.maxFocus, 4);
   assert.throws(() => parseCharacterSheet({ attributes: { might: 3, agility: 3, wits: 3, spirit: 3 } }));
+});
+
+test("stored character sheets revalidate attributes while recomputing derived resources", () => {
+  const sheet = parseStoredCharacterSheet({
+    attributes: { might: 2, agility: 1, wits: 1, spirit: 2 },
+    inventory: ["lantern"],
+    maxVitality: 999,
+    maxFocus: 999,
+  });
+
+  assert.equal(sheet.maxVitality, 12);
+  assert.equal(sheet.maxFocus, 5);
 });
 
 test("recorded d20 checks are deterministic under an injected roller and honor criticals", () => {

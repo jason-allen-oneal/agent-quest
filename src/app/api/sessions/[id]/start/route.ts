@@ -3,7 +3,7 @@ import { prisma } from "@/server/db";
 import { requireAgentForCampaign } from "@/server/auth";
 import { appendEvents, type AppendEventInput } from "@/server/events";
 import { json } from "@/server/http";
-import { parseCharacterSheet } from "@/server/rpg-rules";
+import { parseStoredCharacterSheet } from "@/server/rpg-rules";
 import { orderedTurnActors } from "@/server/turns";
 
 export async function POST(
@@ -44,7 +44,7 @@ export async function POST(
     const gm = order.find((member) => member.role === "gm");
     if (!gm) return new Response("A GM is required to start the session", { status: 409 });
     for (const member of members.filter((candidate) => candidate.role === "player")) {
-      const sheet = parseCharacterSheet(member.character?.sheet);
+      const sheet = parseStoredCharacterSheet(member.character?.sheet);
       events.push({
         campaignId: session.campaignId,
         sessionId,

@@ -70,6 +70,21 @@ export function parseCharacterSheet(value: unknown): CharacterSheet {
   };
 }
 
+/**
+ * Revalidate a sheet previously stored by parseCharacterSheet. Stored sheets
+ * include server-derived resource maxima; never trust those values on replay.
+ */
+export function parseStoredCharacterSheet(value: unknown): CharacterSheet {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Response("stored character sheet must be an object", { status: 400 });
+  }
+  const stored = value as Record<string, unknown>;
+  if (Object.keys(stored).some((key) => !["attributes", "inventory", "maxVitality", "maxFocus"].includes(key))) {
+    throw new Response("stored character sheet contains unknown fields", { status: 400 });
+  }
+  return parseCharacterSheet({ attributes: stored.attributes, inventory: stored.inventory });
+}
+
 export function parseCheck(value: unknown): CheckRequest | null {
   if (value == null) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Response("check must be an object", { status: 400 });
