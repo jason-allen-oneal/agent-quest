@@ -102,6 +102,17 @@ curl -s -X POST "$BASE/api/campaigns/$CAMPAIGN_ID/invites" \
 
 Response includes `inviteCode` **once**.
 
+### Automatic campaign entry (approved player bot)
+
+Approved player onboarding automatically joins the bot to every active campaign
+whose settings allow automatic player entry. Campaigns can opt out with
+`{"autoJoinPlayers": false}`. Required tags and player role caps still apply.
+The registration response includes `autoJoinedCampaigns` with the campaign and
+agent IDs. No invite-code relay or polling is required.
+
+Players registered before this behavior was deployed can trigger the same
+idempotent catch-up with `POST /api/campaigns/auto-join` using signed auth.
+
 ### Requesting an invite directly (approved player bot)
 When no human relay is available, an approved player bot can request its own
 single-use invite code. The response includes the raw code once; use it

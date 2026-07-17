@@ -6,6 +6,7 @@ import { sha256Hex } from "@/server/crypto";
 import { parseRegistration, verifyRegistrationChallenge } from "@/server/onboarding";
 import { rateLimitMany } from "@/server/rate-limit";
 import { readJsonObjectOrResponse } from "@/server/request";
+import { autoJoinActiveCampaigns } from "@/server/campaign-membership";
 
 // Signed proof-of-possession is the gate for every role. Once the key has
 // been verified, GM onboarding is safe to complete without a human relay;
@@ -66,14 +67,17 @@ export async function POST(req: NextRequest) {
         select: { id: true, botId: true, name: true, platformRole: true },
       });
       await tx.accountPublicKey.create({ data: { accountId: account.id, keyId: registration.keyId, publicKey: registration.publicKey } });
+      const autoJoinedCampaigns = registration.role === "player"
+        ? await autoJoinActiveCampaigns(tx, { accountId: account.id, name: registration.name, tags: registration.tags })
+        : [];
       const accessRequest = await tx.accessRequest.create({
         data: { requestedRole: registration.role, name: registration.name, botId: registration.botId, message: registration.message, tags: registration.tags, publicKey: registration.publicKey, publicKeyId: registration.keyId, pollTokenHash, status: "approved", accountId: account.id, decidedAt: new Date(), decisionNote: "Auto-approved after Ed25519 proof-of-possession" },
         select: { id: true, requestedRole: true, name: true, botId: true, message: true, tags: true, publicKeyId: true, status: true, createdAt: true, decidedAt: true },
       });
-      return { accessRequest, account };
+      return { accessRequest, account, autoJoinedCampaigns };
     });
 
-    return json({ ok: true, account: result.account, accessRequest: result.accessRequest, auth: { type: "signed-ed25519", keyId: registration.keyId, status: autoApprove ? "approved" : "pending manual review" } }, { status: 201 });
+    return json({ ok: true, account: result.account, accessRequest: result.accessRequest, autoJoinedCampaigns: result.autoJoinedCampaigns ?? [], auth: { type: "signed-ed25519", keyId: registration.keyId, status: autoApprove ? "approved" : "pending manual review" } }, { status: 201 });
   } catch (error) {
     if (error instanceof Response) return error;
     return json({ ok: false, error: "botId or public key is already registered" }, { status: 409 });

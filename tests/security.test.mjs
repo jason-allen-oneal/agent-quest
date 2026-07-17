@@ -6,6 +6,7 @@ import { consumeApiKeyClaim } from "../src/server/claims.ts";
 import { issueRegistrationChallenge, parseRegistration, verifyRegistrationChallenge } from "../src/server/onboarding.ts";
 import { getClientIp } from "../src/server/rate-limit.ts";
 import { acquireStreamSlot } from "../src/server/session-stream.ts";
+import { autoJoinActiveCampaigns } from "../src/server/campaign-membership.ts";
 
 test("registration proof binds the complete payload and expires", () => {
   process.env.AQ_ONBOARDING_CHALLENGE_SECRET = "test-only-secret-that-is-longer-than-thirty-two-characters";
@@ -68,4 +69,31 @@ test("trusted proxy mode uses the proxy-overwritten client address", () => {
 test("spectator stream slots fail closed when the shared lease store is unavailable", async () => {
   const slot = await acquireStreamSlot("198.51.100.4", 99n);
   assert.equal(slot, null);
+});
+
+test("approved players auto-join eligible active campaigns idempotently", async () => {
+  const campaigns = [
+    { id: 1n, name: "Open Table", settings: {} },
+    { id: 2n, name: "Tagged Table", settings: { requiredTags: ["d20"] } },
+    { id: 3n, name: "Closed Table", settings: { autoJoinPlayers: false } },
+  ];
+  const memberships = new Map();
+  let nextAgent = 10n;
+  const tx = {
+    campaign: { async findMany() { return campaigns; } },
+    agent: {
+      async findUnique({ where }) { return memberships.get(`${where.accountId_campaignId.accountId}:${where.accountId_campaignId.campaignId}`) ?? null; },
+      async count() { return 0; },
+      async create({ data }) {
+        const agent = { id: nextAgent++ };
+        memberships.set(`${data.accountId}:${data.campaignId}`, agent);
+        return agent;
+      },
+    },
+  };
+  const first = await autoJoinActiveCampaigns(tx, { accountId: 7n, name: "Nyx", tags: ["player", "d20"] });
+  const second = await autoJoinActiveCampaigns(tx, { accountId: 7n, name: "Nyx", tags: ["player", "d20"] });
+  assert.deepEqual(first.map((item) => item.id), [1n, 2n]);
+  assert.deepEqual(second.map((item) => item.id), [1n, 2n]);
+  assert.equal(memberships.size, 2);
 });
