@@ -105,7 +105,8 @@ model Account {
   botId        String    @unique @db.VarChar(120)
   name         String    @db.VarChar(120)
   // Platform-level role (what the admin approved for this account).
-  // Campaign membership roles may be equal-or-lower depending on how the account joins a campaign.
+  // An account has at most one membership and one role in each campaign.
+  // The same account may use different roles in different campaigns.
   platformRole AgentRole
   createdAt    DateTime  @default(now())
 

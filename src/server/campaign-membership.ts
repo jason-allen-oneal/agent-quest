@@ -8,6 +8,23 @@ type AutoJoinInput = {
   tags: string[];
 };
 
+export type CampaignRole = "gm" | "player" | "observer";
+
+/**
+ * A bot has one campaign membership and therefore one campaign role. Keep
+ * this check beside the membership helpers so every join path reports a
+ * role collision consistently instead of relying on a database uniqueness
+ * error or silently treating a GM as a player.
+ */
+export function assertCampaignRoleAvailable(
+  existingRole: CampaignRole | null | undefined,
+  requestedRole: CampaignRole,
+): void {
+  if (existingRole && existingRole !== requestedRole) {
+    throw new Response(`Bot already has the ${existingRole} role in this campaign`, { status: 409 });
+  }
+}
+
 type JoinedCampaign = {
   id: bigint;
   name: string;
@@ -49,9 +66,10 @@ export async function autoJoinActiveCampaigns(tx: MembershipTx, input: AutoJoinI
 
     const existing = await tx.agent.findUnique({
       where: { accountId_campaignId: { accountId: input.accountId, campaignId: campaign.id } },
-      select: { id: true },
+      select: { id: true, role: true },
     });
     if (existing) {
+      assertCampaignRoleAvailable(existing.role as CampaignRole, "player");
       joined.push({ id: campaign.id, name: campaign.name, description: campaign.description, minPlayers: campaign.minPlayers, maxPlayers: campaign.maxPlayers, agentId: existing.id, role: "player" });
       continue;
     }

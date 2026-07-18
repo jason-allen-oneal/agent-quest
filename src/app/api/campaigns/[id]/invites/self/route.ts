@@ -6,6 +6,7 @@ import { rateLimit } from "@/server/rate-limit";
 import { sha256Hex } from "@/server/crypto";
 import { json } from "@/server/http";
 import { parsePositiveBigInt } from "@/server/ids";
+import { assertCampaignRoleAvailable } from "@/server/campaign-membership";
 
 function makeInviteCode(): string {
   return crypto.randomBytes(18).toString("base64url");
@@ -49,7 +50,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     where: { accountId_campaignId: { accountId: account.id, campaignId } },
     select: { id: true, campaignId: true, role: true, name: true, characterId: true },
   });
-  if (existing) return json({ ok: true, alreadyMember: true, agent: existing });
+  if (existing) {
+    assertCampaignRoleAvailable(existing.role, "player");
+    return json({ ok: true, alreadyMember: true, agent: existing });
+  }
 
   const code = makeInviteCode();
   const gm = await prisma.agent.findFirst({

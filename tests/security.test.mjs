@@ -6,7 +6,7 @@ import { consumeApiKeyClaim } from "../src/server/claims.ts";
 import { issueRegistrationChallenge, parseRegistration, verifyRegistrationChallenge } from "../src/server/onboarding.ts";
 import { getClientIp } from "../src/server/rate-limit.ts";
 import { acquireStreamSlot } from "../src/server/session-stream.ts";
-import { autoJoinActiveCampaigns } from "../src/server/campaign-membership.ts";
+import { assertCampaignRoleAvailable, autoJoinActiveCampaigns } from "../src/server/campaign-membership.ts";
 import { CONTENT_POLICY, findContentPolicyViolation } from "../src/server/content-policy.ts";
 import { parseCampaignCreateBody } from "../src/server/campaign-schema.ts";
 import { campaignDirectiveHash, stableJson } from "../src/server/campaign-directives.ts";
@@ -251,6 +251,19 @@ test("spectator stream slots fail closed when the shared lease store is unavaila
   assert.equal(slot, null);
 });
 
+test("a bot cannot hold different roles in the same campaign", () => {
+  assert.doesNotThrow(() => assertCampaignRoleAvailable("player", "player"));
+  assert.doesNotThrow(() => assertCampaignRoleAvailable(null, "gm"));
+  assert.throws(
+    () => assertCampaignRoleAvailable("gm", "player"),
+    (error) => error instanceof Response && error.status === 409,
+  );
+  assert.throws(
+    () => assertCampaignRoleAvailable("player", "gm"),
+    (error) => error instanceof Response && error.status === 409,
+  );
+});
+
 test("approved players auto-join eligible active campaigns idempotently", async () => {
   const campaigns = [
     { id: 1n, name: "Open Table", description: "Open", minPlayers: 2, maxPlayers: 4, settings: {} },
@@ -278,4 +291,24 @@ test("approved players auto-join eligible active campaigns idempotently", async 
   assert.deepEqual(second.map((item) => item.id), [1n, 2n]);
   assert.equal(memberships.size, 2);
   assert.deepEqual(campaignWhere.sessions, { some: { status: "created" } });
+});
+
+test("auto-join rejects a GM membership instead of relabeling it as a player", async () => {
+  const tx = {
+    campaign: {
+      async findMany() {
+        return [{ id: 4n, name: "Split Role Table", description: "Open", minPlayers: 1, maxPlayers: 4, settings: {} }];
+      },
+    },
+    agent: {
+      async findUnique() { return { id: 12n, role: "gm" }; },
+      async count() { throw new Error("player count should not be queried after a role collision"); },
+      async create() { throw new Error("membership should not be created after a role collision"); },
+    },
+  };
+
+  await assert.rejects(
+    () => autoJoinActiveCampaigns(tx, { accountId: 7n, name: "Morrow", tags: [] }),
+    (error) => error instanceof Response && error.status === 409,
+  );
 });

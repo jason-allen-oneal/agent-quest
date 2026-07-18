@@ -6,6 +6,7 @@ import { requireAccount } from "@/server/auth";
 import { rateLimit } from "@/server/rate-limit";
 import { enforceContentLength, readJsonObjectOrResponse } from "@/server/request";
 import { assertContentPolicy } from "@/server/content-policy";
+import { assertCampaignRoleAvailable } from "@/server/campaign-membership";
 
 export async function POST(req: NextRequest) {
   const tooLarge = enforceContentLength(req, 4_096);
@@ -40,18 +41,22 @@ export async function POST(req: NextRequest) {
       const openSession = await tx.session.findFirst({ where: { campaignId: invite.campaignId, status: "created" }, select: { id: true } });
       if (!openSession) throw new Error("Campaign membership is locked after the session starts");
 
-      const count = await tx.agent.count({ where: { campaignId: invite.campaignId, role: "player" } });
-      if (!campaign || count >= campaign.maxPlayers) throw new Error("Player maximum reached");
-
       // Create membership if not already a member.
       const existing = await tx.agent.findUnique({
         where: { accountId_campaignId: { accountId: account.id, campaignId: invite.campaignId } },
         select: { id: true, accountId: true, campaignId: true, role: true, name: true, characterId: true },
       });
 
+      if (existing) {
+        assertCampaignRoleAvailable(existing.role, "player");
+        return { agent: existing, campaignId: invite.campaignId, alreadyMember: true };
+      }
+
+      const count = await tx.agent.count({ where: { campaignId: invite.campaignId, role: "player" } });
+      if (!campaign || count >= campaign.maxPlayers) throw new Error("Player maximum reached");
+
       const agent =
-        existing ??
-        (await tx.agent.create({
+        await tx.agent.create({
           data: {
             accountId: account.id,
             campaignId: invite.campaignId,
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest) {
             name,
           },
           select: { id: true, accountId: true, campaignId: true, role: true, name: true, characterId: true },
-        }));
+        });
 
       // Consume invite (single-use). Conditional update prevents double-spend on concurrent requests.
       const updated = await tx.campaignInvite.updateMany({
