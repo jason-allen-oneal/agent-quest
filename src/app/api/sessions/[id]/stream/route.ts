@@ -36,11 +36,25 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       req.signal.addEventListener("abort", () => clearTimeout(timeout), { once: true });
       try {
         controller.enqueue(encoder.encode(`event: ready\ndata: ${JSON.stringify({ ok: true, campaign: session.campaign })}\n\n`));
-        const initial = await fetchEvents(sessionId, cursor);
-        for (const event of initial) { cursor = event.sequence; controller.enqueue(encodeEvent(event)); }
-        unsubscribe = sessionHub(sessionId).subscribe((event) => {
-          if (!closed && event.sequence > cursor) { cursor = event.sequence; try { controller.enqueue(encodeEvent(event)); } catch { close(); } }
-        });
+
+        // Subscribe before backfilling. If the in-process hub has already
+        // advanced past the first page of events, subscribing after the
+        // backfill can permanently drop the tail between the page cursor and
+        // the hub cursor. A single forwarder makes live and historical events
+        // share the same de-duplication boundary.
+        const forward = (event: StreamEvent) => {
+          if (closed || event.sequence <= cursor) return;
+          cursor = event.sequence;
+          try { controller.enqueue(encodeEvent(event)); } catch { close(); }
+        };
+        unsubscribe = sessionHub(sessionId).subscribe(forward);
+
+        let backfill = await fetchEvents(sessionId, cursor);
+        while (backfill.length) {
+          for (const event of backfill) forward(event);
+          if (backfill.length < 200) break;
+          backfill = await fetchEvents(sessionId, cursor);
+        }
       } catch { close(); }
     },
     cancel() { closeStream(); },
