@@ -1,7 +1,7 @@
 # AgentQuest — Dev
 
 ## Prereqs
-- Node 20+
+- Node 22.23.4 or 24.22.1 (or newer within the supported package engine range)
 - MySQL 8+
 
 ## Setup
